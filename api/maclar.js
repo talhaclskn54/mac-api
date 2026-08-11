@@ -2,7 +2,7 @@ const axios = require('axios');
 const cheerio = require('cheerio');
 
 module.exports = async (req, res) => {
-    // CORS Başlıkları (Uygulamadan erişim için)
+    // CORS Başlıkları (Uygulamadan erişim izni)
     res.setHeader('Access-Control-Allow-Credentials', true);
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS');
@@ -16,24 +16,76 @@ module.exports = async (req, res) => {
         return;
     }
 
-    try {
-        // Hedef site adresi
-        const targetUrl = 'https://taraftarium2spor.top/';
-        const { data } = await axios.get(targetUrl, {
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-            }
-        });
+    const TARGET_DOMAIN = 'https://taraftarium2spor.top';
+    const HEADERS = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Referer': `${TARGET_DOMAIN}/`,
+        'Origin': TARGET_DOMAIN,
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'Accept-Language': 'tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7'
+    };
 
+    try {
+        // 1. OYNATICI VEYA M3U8 LINKI AYIKLAMA (Sadece İzle Butonuna Basıldığında Çalışır)
+        if (req.query.getStream && req.query.url) {
+            const pageUrl = req.query.url;
+            
+            // Maçın kendi detay sayfasını çekiyoruz
+            const matchPage = await axios.get(pageUrl, { headers: HEADERS });
+            const html = matchPage.data;
+
+            // A) Ana Sayfada Doğrudan .m3u8 Var mı?
+            let m3u8Match = html.match(/(https?:\/\/[^\s"'<>]+\.m3u8[^\s"'<>]*)/i);
+            if (m3u8Match && m3u8Match[0]) {
+                return res.status(200).json({ basarili: true, streamUrl: m3u8Match[0], type: 'm3u8' });
+            }
+
+            // B) Yoksa Oynatıcı Iframe Adresini Bul
+            const $page = cheerio.load(html);
+            let iframeSrc = $page('iframe').attr('src');
+
+            if (!iframeSrc) {
+                const iframeMatch = html.match(/<iframe[^>]+src=["']([^"']+)["']/i);
+                if (iframeMatch) iframeSrc = iframeMatch[1];
+            }
+
+            if (iframeSrc) {
+                if (iframeSrc.startsWith('//')) iframeSrc = 'https:' + iframeSrc;
+                else if (iframeSrc.startsWith('/')) iframeSrc = TARGET_DOMAIN + iframeSrc;
+
+                // DERİN TARAMA: Iframe sayfasının içine girip gizlenmiş .m3u8 linkini ayıkla
+                try {
+                    const iframePage = await axios.get(iframeSrc, {
+                        headers: {
+                            ...HEADERS,
+                            'Referer': pageUrl
+                        }
+                    });
+                    const iframeHtml = iframePage.data;
+                    let innerM3u8 = iframeHtml.match(/(https?:\/\/[^\s"'<>]+\.m3u8[^\s"'<>]*)/i);
+                    
+                    if (innerM3u8 && innerM3u8[0]) {
+                        return res.status(200).json({ basarili: true, streamUrl: innerM3u8[0], type: 'm3u8' });
+                    }
+                } catch (e) {
+                    // Iframe içine erişilemezse güvenli yedek olarak iframe adresini döndür
+                }
+
+                return res.status(200).json({ basarili: true, streamUrl: iframeSrc, type: 'iframe' });
+            }
+
+            return res.status(200).json({ basarili: false, message: 'Yayın adresi veya player bulunamadı.' });
+        }
+
+        // 2. ANA MAÇ LİSTESİNİ ÇEKME (Orijinal Bozulan Hiçbir Şey Yok)
+        const { data } = await axios.get(TARGET_DOMAIN, { headers: HEADERS });
         const $ = cheerio.load(data);
         const maclar = [];
 
-        // Sayfadaki maç linklerini ve başlıklarını tara
         $('a[href*="/mac-izle/"]').each((i, element) => {
             const title = $(element).text().trim();
             const pageUrl = $(element).attr('href');
             
-            // Maç saati tespiti (Varsa alır, yoksa CANLI yazar)
             const timeMatch = title.match(/\d{2}:\d{2}/);
             const time = timeMatch ? timeMatch[0] : 'CANLI';
 
@@ -41,33 +93,10 @@ module.exports = async (req, res) => {
                 maclar.push({
                     title: title.replace(/\s+/g, ' '),
                     time: time,
-                    pageUrl: pageUrl.startsWith('http') ? pageUrl : `https://taraftarium2spor.top${pageUrl}`
+                    pageUrl: pageUrl.startsWith('http') ? pageUrl : `${TARGET_DOMAIN}${pageUrl}`
                 });
             }
         });
-
-        // M3U8 linkini sayfadan çekme endpoint'i isteği geldiyse
-        if (req.query.getStream && req.query.url) {
-            const matchPage = await axios.get(req.query.url, {
-                headers: {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-                }
-            });
-
-            // Sayfa kodunda geçen .m3u8 kalıplarını regex ile ayıkla
-            const m3u8Match = matchPage.data.match(/(https?:\/\/[^\s"'<>]+\.m3u8[^\s"'<>]*)/i);
-            
-            if (m3u8Match && m3u8Match[0]) {
-                return res.status(200).json({ basarili: true, streamUrl: m3u8Match[0] });
-            } else {
-                // Eğer doğrudan m3u8 bulunamazsa player iframe adresini bul
-                const iframeMatch = matchPage.data.match(/<iframe[^>]+src=["']([^"']+)["']/i);
-                if (iframeMatch && iframeMatch[1]) {
-                    return res.status(200).json({ basarili: true, streamUrl: iframeMatch[1] });
-                }
-            }
-            return res.status(200).json({ basarili: false, message: 'Yayın m3u8 adresi bulunamadı' });
-        }
 
         res.status(200).json({
             basarili: true,
