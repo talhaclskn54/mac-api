@@ -2,7 +2,7 @@ const axios = require('axios');
 const cheerio = require('cheerio');
 
 module.exports = async (req, res) => {
-    // CORS Başlıkları (Uygulamadan erişim izni)
+    // CORS Başlıkları (Mobil uygulamadan ve dışarıdan erişim izni)
     res.setHeader('Access-Control-Allow-Credentials', true);
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS');
@@ -25,22 +25,41 @@ module.exports = async (req, res) => {
         'Accept-Language': 'tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7'
     };
 
+    // YAYIN LİNKİ AYIKLAMA FONKSİYONU (Yedekli Pattern Matching)
+    function extractStreamUrl(htmlContent) {
+        const streamPatterns = [
+            /(https?:\/\/[^\s"'<>]+\.m3u8[^\s"'<>]*)/i,                  // Standart M3U8 linki
+            /file:\s*["'](https?:\/\/[^\s"'<>]+\.m3u8[^"']*)["']/i,       // Player içindeki file: "..." kalıbı
+            /source\s*:\s*["'](https?:\/\/[^\s"'<>]+\.m3u8[^"']*)["']/i,     // Player içindeki source: "..." kalıbı
+            /(https?:\/\/[^\s"'<>]+\.mp4[^\s"'<>]*)/i                    // MP4 yedek format
+        ];
+
+        for (let pattern of streamPatterns) {
+            let match = htmlContent.match(pattern);
+            if (match) {
+                // Öncelik yakalanan grupta (match[1]), yoksa eşleşmenin tamamında (match[0])
+                return match[1] || match[0];
+            }
+        }
+        return null;
+    }
+
     try {
-        // 1. OYNATICI VEYA M3U8 LINKI AYIKLAMA (Sadece İzle Butonuna Basıldığında Çalışır)
+        // 1. OYNATICI VEYA M3U8 LINKI AYIKLAMA (İzle butonuna basıldığında çalışır)
         if (req.query.getStream && req.query.url) {
             const pageUrl = req.query.url;
             
-            // Maçın kendi detay sayfasını çekiyoruz
+            // Maçın detay sayfasını çekiyoruz
             const matchPage = await axios.get(pageUrl, { headers: HEADERS });
             const html = matchPage.data;
 
-            // A) Ana Sayfada Doğrudan .m3u8 Var mı?
-            let m3u8Match = html.match(/(https?:\/\/[^\s"'<>]+\.m3u8[^\s"'<>]*)/i);
-            if (m3u8Match && m3u8Match[0]) {
-                return res.status(200).json({ basarili: true, streamUrl: m3u8Match[0], type: 'm3u8' });
+            // A) Ana Sayfada Yedekli Kalıplarla Yayın Arama
+            let streamUrl = extractStreamUrl(html);
+            if (streamUrl) {
+                return res.status(200).json({ basarili: true, streamUrl: streamUrl, type: 'm3u8' });
             }
 
-            // B) Yoksa Oynatıcı Iframe Adresini Bul
+            // B) Ana sayfada bulunamazsa Player Iframe adresini tespit et
             const $page = cheerio.load(html);
             let iframeSrc = $page('iframe').attr('src');
 
@@ -53,7 +72,7 @@ module.exports = async (req, res) => {
                 if (iframeSrc.startsWith('//')) iframeSrc = 'https:' + iframeSrc;
                 else if (iframeSrc.startsWith('/')) iframeSrc = TARGET_DOMAIN + iframeSrc;
 
-                // DERİN TARAMA: Iframe sayfasının içine girip gizlenmiş .m3u8 linkini ayıkla
+                // DERİN TARAMA: Iframe'in içine girip yayın adresini orada ara
                 try {
                     const iframePage = await axios.get(iframeSrc, {
                         headers: {
@@ -62,13 +81,13 @@ module.exports = async (req, res) => {
                         }
                     });
                     const iframeHtml = iframePage.data;
-                    let innerM3u8 = iframeHtml.match(/(https?:\/\/[^\s"'<>]+\.m3u8[^\s"'<>]*)/i);
+                    let innerStreamUrl = extractStreamUrl(iframeHtml);
                     
-                    if (innerM3u8 && innerM3u8[0]) {
-                        return res.status(200).json({ basarili: true, streamUrl: innerM3u8[0], type: 'm3u8' });
+                    if (innerStreamUrl) {
+                        return res.status(200).json({ basarili: true, streamUrl: innerStreamUrl, type: 'm3u8' });
                     }
                 } catch (e) {
-                    // Iframe içine erişilemezse güvenli yedek olarak iframe adresini döndür
+                    // Iframe içeriğine erişilemezse güvenli yedek olarak iframe adresini ver
                 }
 
                 return res.status(200).json({ basarili: true, streamUrl: iframeSrc, type: 'iframe' });
@@ -77,7 +96,7 @@ module.exports = async (req, res) => {
             return res.status(200).json({ basarili: false, message: 'Yayın adresi veya player bulunamadı.' });
         }
 
-        // 2. ANA MAÇ LİSTESİNİ ÇEKME (Orijinal Bozulan Hiçbir Şey Yok)
+        // 2. ANA MAÇ LİSTESİNİ ÇEKME (Bozulmayan Orijinal Yapı)
         const { data } = await axios.get(TARGET_DOMAIN, { headers: HEADERS });
         const $ = cheerio.load(data);
         const maclar = [];
