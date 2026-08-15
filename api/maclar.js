@@ -29,86 +29,120 @@ module.exports = async (req, res) => {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
         'Referer': `${TARGET_DOMAIN}/`,
         'Origin': TARGET_DOMAIN,
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'Accept': '*/*',
         'Accept-Language': 'tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7'
     };
 
-    // GELİŞMİŞ M3U8 VE YAYIN LİNKİ AYIKLAMA
+    // GELİŞMİŞ REKLAMSIZ M3U8 VE GİZLİ SCRIPT AYIKLAMA
     function extractStreamUrl(htmlContent) {
         if (!htmlContent) return null;
 
         const streamPatterns = [
-            /(https?:\/\/[^\s"'<>]+\.m3u8[^\s"'<>]*)/i,
-            /file:\s*["'](https?:\/\/[^\s"'<>]+\.m3u8[^"']*)["']/i,
-            /source\s*:\s*["'](https?:\/\/[^\s"'<>]+\.m3u8[^"']*)["']/i,
-            /src\s*:\s*["'](https?:\/\/[^\s"'<>]+\.m3u8[^"']*)["']/i,
+            // 1. Standart m3u8 URL yapıları
+            /(https?:\/\/[^\s"'<>]+?\.m3u8[^\s"'<>]*)/i,
+            /file:\s*["'](https?:\/\/[^\s"'<>]+?\.m3u8[^"']*)["']/i,
+            /source\s*:\s*["'](https?:\/\/[^\s"'<>]+?\.m3u8[^"']*)["']/i,
+            /src\s*:\s*["'](https?:\/\/[^\s"'<>]+?\.m3u8[^"']*)["']/i,
+            // 2. Şifreli / Tokenlı HLS Kalıpları
             /["'](https?:\/\/[^"']+\/hls\/[^"']+)["']/i,
-            /(https?:\/\/[^\s"'<>]+\.mp4[^\s"'<>]*)/i
+            /["'](https?:\/\/[^"']+\/live\/[^"']+)["']/i,
+            // 3. Base64 veya Clappr/JWPlayer değişkenleri
+            /var\ courseUrl\s*=\s*["']([^"']+)["']/i,
+            /(https?:\/\/[^\s"'<>]+?\.mp4[^\s"'<>]*)/i
         ];
 
         for (let pattern of streamPatterns) {
             let match = htmlContent.match(pattern);
             if (match) {
-                return match[1] || match[0];
+                let url = match[1] || match[0];
+                // Reklam js veya tık izleme scriptlerini hariç tut
+                if (!url.includes('google') && !url.includes('analytics') && !url.includes('pop') && !url.includes('ad.')) {
+                    return url;
+                }
             }
         }
         return null;
     }
 
     try {
-        // 1. OYNATICI VEYA M3U8 LINKI AYIKLAMA
+        // 1. OYNATICI VEYA M3U8 LINKI AYIKLAMA (Tekil Yayın İsteği)
         if (req.query.getStream && req.query.url) {
             const pageUrl = req.query.url;
             
             const matchPage = await axios.get(pageUrl, { headers: HEADERS, timeout: 8000 });
             const html = matchPage.data;
 
-            // A) Doğrudan M3U8 Ara
+            // A) Doğrudan Sayfa İçi M3U8 Arama
             let streamUrl = extractStreamUrl(html);
             if (streamUrl) {
                 return res.status(200).json({ basarili: true, streamUrl: streamUrl, type: 'm3u8' });
             }
 
-            // B) Player Iframe Ayıklama (Reklam ve Chat Iframe'lerini Süz)
+            // B) Player Iframe'lerini Ayıklama (Reklam, Chat ve Skor Widget'larını Filtrele)
             const $page = cheerio.load(html);
-            let iframeSrc = null;
+            let candidateIframes = [];
 
             $page('iframe').each((i, el) => {
                 const src = $page(el).attr('src') || $page(el).attr('data-src');
-                if (src && !src.includes('chat') && !src.includes('reklam') && !src.includes('google') && !src.includes('facebook')) {
-                    iframeSrc = src;
+                if (src) {
+                    const lowerSrc = src.toLowerCase();
+                    // Reklam, canlı skor, chat ve sosyal medya iframelerini engelle
+                    const isAdOrWidget = lowerSrc.includes('chat') || 
+                                         lowerSrc.includes('reklam') || 
+                                         lowerSrc.includes('score') || 
+                                         lowerSrc.includes('skor') || 
+                                         lowerSrc.includes('bet') || 
+                                         lowerSrc.includes('banner') || 
+                                         lowerSrc.includes('google');
+                    if (!isAdOrWidget) {
+                        candidateIframes.push(src);
+                    }
                 }
             });
 
-            if (!iframeSrc) {
+            // Eğer listeden filtreli iframe çıkmazsa regex ile tara
+            if (candidateIframes.length === 0) {
                 const iframeMatches = html.matchAll(/<iframe[^>]+src=["']([^"']+)["']/gi);
                 for (const match of iframeMatches) {
                     const src = match[1];
-                    if (!src.includes('chat') && !src.includes('reklam') && !src.includes('google')) {
-                        iframeSrc = src;
-                        break;
+                    if (!src.includes('chat') && !src.includes('reklam') && !src.includes('score') && !src.includes('skor')) {
+                        candidateIframes.push(src);
                     }
                 }
             }
 
-            if (iframeSrc) {
+            // C) Bulunan Iframe'lerin İçine Girip Derin M3U8 Taraması Yap
+            for (let iframeSrc of candidateIframes) {
                 if (iframeSrc.startsWith('//')) iframeSrc = 'https:' + iframeSrc;
                 else if (iframeSrc.startsWith('/')) iframeSrc = TARGET_DOMAIN + iframeSrc;
 
-                // DERİN TARAMA: Iframe'in içine girip M3U8 ara
                 try {
                     const iframePage = await axios.get(iframeSrc, {
-                        headers: { ...HEADERS, 'Referer': pageUrl },
+                        headers: { 
+                            ...HEADERS, 
+                            'Referer': pageUrl 
+                        },
                         timeout: 8000
                     });
-                    let innerStreamUrl = extractStreamUrl(iframePage.data);
-                    
+
+                    const iframeHtml = iframePage.data;
+                    let innerStreamUrl = extractStreamUrl(iframeHtml);
+
+                    // Eğer Iframe içindeki JS'lerde M3U8 yakalandıysa doğrudan onu döndür (Sıfır Reklam)
                     if (innerStreamUrl) {
                         return res.status(200).json({ basarili: true, streamUrl: innerStreamUrl, type: 'm3u8' });
                     }
-                } catch (e) {}
+                } catch (e) {
+                    // Iframe içeriğine erişilemezse sonraki adımlara geç
+                }
+            }
 
-                return res.status(200).json({ basarili: true, streamUrl: iframeSrc, type: 'iframe' });
+            // D) M3U8 hiçbir şekilde çıkarılamazsa en temiz iframe'i fallback ver
+            if (candidateIframes.length > 0) {
+                let finalIframe = candidateIframes[0];
+                if (finalIframe.startsWith('//')) finalIframe = 'https:' + finalIframe;
+                else if (finalIframe.startsWith('/')) finalIframe = TARGET_DOMAIN + finalIframe;
+                return res.status(200).json({ basarili: true, streamUrl: finalIframe, type: 'iframe' });
             }
 
             return res.status(200).json({ basarili: false, message: 'Yayın adresi veya player bulunamadı.' });
@@ -120,7 +154,6 @@ module.exports = async (req, res) => {
         const maclar = [];
 
         if (source === 'zbahis') {
-            // ZBahis Özel Link Ayıklama
             $('a[href*="/izle/"], a[href*="/channel/"], a[href*="/mac/"], .event-item a, .match-card a').each((i, element) => {
                 const title = $(element).text().trim();
                 let pageUrl = $(element).attr('href');
@@ -141,7 +174,6 @@ module.exports = async (req, res) => {
                 }
             });
         } else {
-            // Taraftarium Orijinal Ayıklama Mantığı
             $('a[href*="/mac-izle/"]').each((i, element) => {
                 const title = $(element).text().trim();
                 const pageUrl = $(element).attr('href');
