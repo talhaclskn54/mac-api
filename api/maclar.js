@@ -16,7 +16,7 @@ module.exports = async (req, res) => {
         return;
     }
 
-    const TARGET_DOMAIN = 'https://taraftarium2spor.top';
+    const TARGET_DOMAIN = 'https://www.ardaspor30.top/';
     const HEADERS = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         'Referer': `${TARGET_DOMAIN}/`,
