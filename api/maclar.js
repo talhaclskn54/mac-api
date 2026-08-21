@@ -1,9 +1,9 @@
-const chromium = require('@sparticuz/chromium');
-const puppeteer = require('puppeteer-core');
+const axios = require('axios');
+const cheerio = require('cheerio');
 
 module.exports = async (req, res) => {
-    // CORS Başlıkları
-    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    // CORS Başlıkları (Mobil uygulamadan ve dışarıdan erişim izni)
+    res.setHeader('Access-Control-Allow-Credentials', true);
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS');
     res.setHeader(
@@ -11,158 +11,123 @@ module.exports = async (req, res) => {
         'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version'
     );
 
-    if (req.method === 'OPTIONS') return res.status(200).end();
+    if (req.method === 'OPTIONS') {
+        res.status(200).end();
+        return;
+    }
 
-    const TARGET_DOMAIN = 'https://www.ardaspor30.top';
-    let browser = null;
+    const TARGET_DOMAIN = 'https://taraftarium2spor.top';
+    const HEADERS = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Referer': `${TARGET_DOMAIN}/`,
+        'Origin': TARGET_DOMAIN,
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'Accept-Language': 'tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7'
+    };
 
-    try {
-        browser = await puppeteer.launch({
-            args: [
-                ...chromium.args,
-                '--no-sandbox',
-                '--disable-setuid-sandbox',
-                '--disable-web-security'
-            ],
-            defaultViewport: chromium.defaultViewport,
-            executablePath: await chromium.executablePath(),
-            headless: chromium.headless,
-        });
+    // YAYIN LİNKİ AYIKLAMA FONKSİYONU (Yedekli Pattern Matching)
+    function extractStreamUrl(htmlContent) {
+        const streamPatterns = [
+            /(https?:\/\/[^\s"'<>]+\.m3u8[^\s"'<>]*)/i,                  // Standart M3U8 linki
+            /file:\s*["'](https?:\/\/[^\s"'<>]+\.m3u8[^"']*)["']/i,       // Player içindeki file: "..." kalıbı
+            /source\s*:\s*["'](https?:\/\/[^\s"'<>]+\.m3u8[^"']*)["']/i,     // Player içindeki source: "..." kalıbı
+            /(https?:\/\/[^\s"'<>]+\.mp4[^\s"'<>]*)/i                    // MP4 yedek format
+        ];
 
-        const page = await browser.newPage();
-        const userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36';
-        await page.setUserAgent(userAgent);
-
-        // 1. TEKİL KANAL / MAÇIN YAYIN LİNKİNİ ÇEKME (?getStream=1&url=...)
-        if (req.query.getStream && req.query.url) {
-            const targetUrl = req.query.url;
-            let capturedM3u8 = null;
-            let refererHeader = targetUrl;
-
-            // Ağ İsteklerini Dinleme (M3U8 ve HLS Akışlarını Yakala)
-            page.on('request', request => {
-                const url = request.url();
-                if ((url.includes('.m3u8') || url.includes('/hls/')) && !capturedM3u8) {
-                    capturedM3u8 = url;
-                    const reqHeaders = request.headers();
-                    if (reqHeaders['referer']) {
-                        refererHeader = reqHeaders['referer'];
-                    }
-                }
-            });
-
-            try {
-                await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 20000 });
-            } catch (e) {}
-
-            // Oynatıcı butonlarına tıklama simülasyonu
-            await page.evaluate(() => {
-                const selectors = ['.play', '.play-btn', '#player', 'iframe', 'video', '.vjs-big-play-button', 'a[href*="play"]'];
-                selectors.forEach(selector => {
-                    document.querySelectorAll(selector).forEach(btn => {
-                        try { btn.click(); } catch(err) {}
-                    });
-                });
-            });
-
-            // İsteğin tetiklenmesi için 3 saniye bekle
-            await new Promise(r => setTimeout(r, 3000));
-
-            // Ağda yakalanamadıysa Iframe içine girerek derin tarama yap
-            if (!capturedM3u8) {
-                const iframeUrl = await page.evaluate(() => {
-                    const iframe = document.querySelector('iframe');
-                    return iframe ? iframe.src : null;
-                });
-
-                if (iframeUrl) {
-                    let cleanIframe = iframeUrl;
-                    if (cleanIframe.startsWith('//')) cleanIframe = 'https:' + cleanIframe;
-                    else if (cleanIframe.startsWith('/')) cleanIframe = TARGET_DOMAIN + cleanIframe;
-
-                    try {
-                        await page.goto(cleanIframe, { waitUntil: 'domcontentloaded', timeout: 15000 });
-                        await page.evaluate(() => {
-                            document.querySelectorAll('video, #player, .play').forEach(el => {
-                                try { el.click(); } catch(e) {}
-                            });
-                        });
-                        await new Promise(r => setTimeout(r, 2500));
-                    } catch(e) {}
-                }
-            }
-
-            await browser.close();
-
-            if (capturedM3u8) {
-                return res.status(200).json({
-                    basarili: true,
-                    streamUrl: capturedM3u8,
-                    headers: {
-                        "Referer": refererHeader,
-                        "User-Agent": userAgent
-                    },
-                    type: 'm3u8'
-                });
-            } else {
-                return res.status(200).json({
-                    basarili: false,
-                    message: 'M3U8 yayın adresi tetiklenemedi veya player engeline takıldı.'
-                });
+        for (let pattern of streamPatterns) {
+            let match = htmlContent.match(pattern);
+            if (match) {
+                // Öncelik yakalanan grupta (match[1]), yoksa eşleşmenin tamamında (match[0])
+                return match[1] || match[0];
             }
         }
+        return null;
+    }
 
-        // 2. ANA SAYFA MAÇ VE KANAL LİSTESİNİ ÇEKME
-        await page.goto(TARGET_DOMAIN, { waitUntil: 'domcontentloaded', timeout: 20000 });
-        await new Promise(r => setTimeout(r, 2500));
+    try {
+        // 1. OYNATICI VEYA M3U8 LINKI AYIKLAMA (İzle butonuna basıldığında çalışır)
+        if (req.query.getStream && req.query.url) {
+            const pageUrl = req.query.url;
+            
+            // Maçın detay sayfasını çekiyoruz
+            const matchPage = await axios.get(pageUrl, { headers: HEADERS });
+            const html = matchPage.data;
 
-        const data = await page.evaluate((domain) => {
-            const maclar = [];
-            const kanallar = [];
-            const links = Array.from(document.querySelectorAll('a'));
+            // A) Ana Sayfada Yedekli Kalıplarla Yayın Arama
+            let streamUrl = extractStreamUrl(html);
+            if (streamUrl) {
+                return res.status(200).json({ basarili: true, streamUrl: streamUrl, type: 'm3u8' });
+            }
 
-            links.forEach(a => {
-                const text = (a.innerText || a.textContent || '').trim().replace(/\s+/g, ' ');
-                let href = a.getAttribute('href');
+            // B) Ana sayfada bulunamazsa Player Iframe adresini tespit et
+            const $page = cheerio.load(html);
+            let iframeSrc = $page('iframe').attr('src');
 
-                if (!href || href === '#' || href.startsWith('javascript:')) return;
+            if (!iframeSrc) {
+                const iframeMatch = html.match(/<iframe[^>]+src=["']([^"']+)["']/i);
+                if (iframeMatch) iframeSrc = iframeMatch[1];
+            }
 
-                if (href.startsWith('/')) href = domain + href;
-                else if (!href.startsWith('http')) href = domain + '/' + href;
+            if (iframeSrc) {
+                if (iframeSrc.startsWith('//')) iframeSrc = 'https:' + iframeSrc;
+                else if (iframeSrc.startsWith('/')) iframeSrc = TARGET_DOMAIN + iframeSrc;
 
-                const timeMatch = text.match(/\b\d{2}:\d{2}\b/);
-                const time = timeMatch ? timeMatch[0] : 'CANLI';
-
-                // Maç Linkleri
-                if ((href.includes('mac') || href.includes('izle') || /\d+/.test(href)) && text.length > 2) {
-                    if (!maclar.some(m => m.pageUrl === href)) {
-                        maclar.push({ title: text, time: time, pageUrl: href });
+                // DERİN TARAMA: Iframe'in içine girip yayın adresini orada ara
+                try {
+                    const iframePage = await axios.get(iframeSrc, {
+                        headers: {
+                            ...HEADERS,
+                            'Referer': pageUrl
+                        }
+                    });
+                    const iframeHtml = iframePage.data;
+                    let innerStreamUrl = extractStreamUrl(iframeHtml);
+                    
+                    if (innerStreamUrl) {
+                        return res.status(200).json({ basarili: true, streamUrl: innerStreamUrl, type: 'm3u8' });
                     }
+                } catch (e) {
+                    // Iframe içeriğine erişilemezse güvenli yedek olarak iframe adresini ver
                 }
 
-                // Canlı TV / Kanal Linkleri
-                if ((href.includes('kanal') || href.includes('tv') || href.includes('channel') || href.includes('bein') || href.includes('ssport')) && text.length > 1) {
-                    if (!kanallar.some(k => k.pageUrl === href)) {
-                        kanallar.push({ title: text, pageUrl: href });
-                    }
-                }
-            });
+                return res.status(200).json({ basarili: true, streamUrl: iframeSrc, type: 'iframe' });
+            }
 
-            return { maclar, kanallar };
-        }, TARGET_DOMAIN);
+            return res.status(200).json({ basarili: false, message: 'Yayın adresi veya player bulunamadı.' });
+        }
 
-        await browser.close();
+        // 2. ANA MAÇ LİSTESİNİ ÇEKME (Bozulmayan Orijinal Yapı)
+        const { data } = await axios.get(TARGET_DOMAIN, { headers: HEADERS });
+        const $ = cheerio.load(data);
+        const maclar = [];
 
-        return res.status(200).json({
+        $('a[href*="/mac-izle/"]').each((i, element) => {
+            const title = $(element).text().trim();
+const pageUrl = $(element).attr('href');
+            
+            const timeMatch = title.match(/\d{2}:\d{2}/);
+            const time = timeMatch ? timeMatch[0] : 'CANLI';
+
+            if (title && pageUrl) {
+                maclar.push({
+                    title: title.replace(/\s+/g, ' '),
+                    time: time,
+                    pageUrl: pageUrl.startsWith('http') ? pageUrl : `${TARGET_DOMAIN}${pageUrl}`
+                });
+            }
+        });
+
+        res.status(200).json({
             basarili: true,
-            toplamMac: data.maclar.length,
-            toplamKanal: data.kanallar.length,
-            maclar: data.maclar,
-            kanallar: data.kanallar
+            toplam: maclar.length,
+            maclar: maclar
         });
 
     } catch (error) {
-        if (browser) await browser.close();
-        return res.status(500).json({ basarili: false, hata: error.message });
+        res.status(500).json({
+            basarili: false,
+            hata: error.message
+        });
     }
 };
+
