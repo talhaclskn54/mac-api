@@ -2,18 +2,30 @@ const axios = require('axios');
 const cheerio = require('cheerio');
 
 module.exports = async (req, res) => {
-    // CORS Başlıkları
-    res.setHeader('Access-Control-Allow-Credentials', true);
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS');
+    // ===============================
+    // CORS - APP / WEBVIEW UYUMLU
+    // ===============================
+
+    const origin = req.headers.origin;
+
+    if (origin) {
+        res.setHeader('Access-Control-Allow-Origin', origin);
+    } else {
+        res.setHeader('Access-Control-Allow-Origin', '*');
+    }
+
+    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
     res.setHeader(
         'Access-Control-Allow-Headers',
-        'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version'
+        'Content-Type, Accept, X-Requested-With'
     );
 
+    res.setHeader('Access-Control-Max-Age', '86400');
+    res.setHeader('Vary', 'Origin');
+
+    // OPTIONS isteği
     if (req.method === 'OPTIONS') {
-        res.status(200).end();
-        return;
+        return res.status(204).end();
     }
 
     const TARGET_DOMAIN = 'https://taraftariumonline24.org';
@@ -33,7 +45,6 @@ module.exports = async (req, res) => {
             /source\s*:\s*["'](https?:\/\/[^\s"'<>]+\.m3u8[^"']*)["']/i,
             /src\s*:\s*["'](https?:\/\/[^\s"'<>]+\.m3u8[^"']*)["']/i
         ];
-
         for (let pattern of streamPatterns) {
             let match = htmlContent.match(pattern);
             if (match) {
@@ -57,7 +68,6 @@ module.exports = async (req, res) => {
                 },
                 responseType: 'arraybuffer'
             });
-
             res.setHeader('Content-Type', 'application/x-mpegURL');
             return res.status(200).send(response.data);
         }
@@ -95,7 +105,10 @@ module.exports = async (req, res) => {
                 // Iframe içerisine girip M3U8 ara (Derin Tarama)
                 try {
                     const iframePage = await axios.get(iframeSrc, {
-                        headers: { ...HEADERS, 'Referer': pageUrl }
+                        headers: {
+                            ...HEADERS,
+                            'Referer': pageUrl
+                        }
                     });
                     const iframeHtml = iframePage.data;
                     let innerStreamUrl = extractStreamUrl(iframeHtml);
@@ -112,7 +125,11 @@ module.exports = async (req, res) => {
                     // Iframe gizlenmişse iframe adresini dön
                 }
 
-                return res.status(200).json({ basarili: true, streamUrl: iframeSrc, type: 'iframe' });
+                return res.status(200).json({
+                    basarili: true,
+                    streamUrl: iframeSrc,
+                    type: 'iframe'
+                });
             }
 
             return res.status(200).json({ basarili: false, message: 'Yayın adresi bulunamadı.' });
@@ -164,9 +181,6 @@ module.exports = async (req, res) => {
         });
 
     } catch (error) {
-        res.status(500).json({
-            basarili: false,
-            hata: error.message
-        });
+        res.status(500).json({ basarili: false, hata: error.message });
     }
 };
