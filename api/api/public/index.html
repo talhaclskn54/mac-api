@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Canlı TV Player</title>
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    <style>
+        body { font-family: Arial, sans-serif; background: #121212; color: #fff; margin: 0; padding: 20px; }
+        .container { display: flex; gap: 20px; flex-wrap: wrap; }
+        .player-box { flex: 2; min-width: 300px; }
+        .channel-list { flex: 1; max-height: 80vh; overflow-y: auto; background: #1e1e1e; padding: 10px; border-radius: 8px; }
+        video { width: 100%; border-radius: 8px; background: #000; }
+        .channel-card { display: flex; align-items: center; gap: 10px; padding: 10px; border-bottom: 1px solid #333; cursor: pointer; }
+        .channel-card:hover { background: #2a2a2a; }
+        .channel-card img { width: 45px; height: 45px; object-fit: contain; }
+        .epg-text { font-size: 12px; color: #aaa; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="player-box">
+        <video id="video" controls autoplay></video>
+        <h2 id="current-channel">Kanal Seçin</h2>
+        <p id="current-epg" class="epg-text"></p>
+    </div>
+    <div class="channel-list" id="channels">Yükleniyor...</div>
+</div>
+
+<script>
+    const video = document.getElementById('video');
+    let hls;
+
+    async function loadChannels() {
+        const res = await fetch('/api/channels');
+        const result = await res.json();
+        const listEl = document.getElementById('channels');
+        listEl.innerHTML = '';
+
+        result.data.forEach(ch => {
+            const item = document.createElement('div');
+            item.className = 'channel-card';
+            item.innerHTML = `
+                <img src="${ch.logo}" alt="${ch.name}">
+                <div>
+                    <strong>${ch.name}</strong>
+                    <div class="epg-text">${ch.epg}</div>
+                </div>
+            `;
+            item.onclick = () => playChannel(ch);
+            listEl.appendChild(item);
+        });
+    }
+
+    async function playChannel(channel) {
+        document.getElementById('current-channel').innerText = channel.name;
+        document.getElementById('current-epg').innerText = channel.epg;
+
+        const streamRes = await fetch(`/api/get-stream?url=${encodeURIComponent(channel.streamUrl)}`);
+        const streamData = await streamRes.json();
+
+        if (streamData.m3u8) {
+            if (Hls.isSupported()) {
+                if (hls) hls.destroy();
+                hls = new Hls();
+                hls.loadSource(streamData.m3u8);
+                hls.attachMedia(video);
+                hls.on(Hls.Events.MANIFEST_PARSED, () => video.play());
+            } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+                video.src = streamData.m3u8;
+                video.play();
+            }
+        } else {
+            alert('Yayın kaynağı çekilemedi.');
+        }
+    }
+
+    loadChannels();
+</script>
+</body>
+</html>
