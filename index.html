@@ -1,0 +1,824 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>AETHER MAÇ - ORTAK İZLEME</title>
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+
+    <style>
+        :root {
+            --bg-color: #08080a;
+            --card-bg: #121218;
+            --card-border: #222230;
+            --primary-red: #d32f2f;
+            --dark-red: #8b0000;
+            --glow-red: #ff1744;
+            --text-main: #ffffff;
+            --text-muted: #a0a0b0;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            padding: 15px;
+            padding-bottom: 30px;
+        }
+
+        .header-container {
+            text-align: center;
+            margin-top: 10px;
+            margin-bottom: 5px;
+        }
+
+        .divider {
+            height: 2px;
+            width: 100%;
+            background: linear-gradient(90deg, transparent, var(--primary-red), var(--glow-red), var(--primary-red), transparent);
+            margin: 8px 0 15px 0;
+            box-shadow: 0 0 8px var(--primary-red);
+        }
+
+        /* MOBİL HATA TEŞHİS PANELİ */
+        #debugConsole {
+            background: #000;
+            border: 1px solid #ff1744;
+            border-radius: 8px;
+            padding: 10px;
+            margin-bottom: 15px;
+            font-family: monospace;
+            font-size: 10px;
+            color: #00ff66;
+            max-height: 150px;
+            overflow-y: auto;
+            word-break: break-all;
+            display: block;
+        }
+        .debug-err { color: #ff3333; font-weight: bold; }
+        .debug-warn { color: #ffcc00; }
+        .debug-info { color: #00e676; }
+
+        .category-tabs {
+            display: flex;
+            gap: 10px;
+            overflow-x: auto;
+            padding-bottom: 5px;
+            margin-bottom: 15px;
+            white-space: nowrap;
+            -webkit-overflow-scrolling: touch;
+        }
+
+        .category-tabs::-webkit-scrollbar { display: none; }
+
+        .tab-btn {
+            background: rgba(211, 47, 47, 0.1);
+            color: var(--text-muted);
+            border: 1px solid var(--card-border);
+            padding: 8px 18px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            flex-shrink: 0;
+        }
+
+        .tab-btn.active {
+            background: linear-gradient(135deg, var(--primary-red), var(--dark-red));
+            color: #ffffff;
+            border-color: var(--glow-red);
+            box-shadow: 0 0 10px rgba(211, 47, 47, 0.5);
+        }
+
+        .tab-btn.room-btn {
+            background: rgba(0, 230, 118, 0.1);
+            border-color: rgba(0, 230, 118, 0.3);
+            color: #00e676;
+        }
+
+        .search-box {
+            position: relative;
+            margin-bottom: 20px;
+        }
+
+        .search-input {
+            width: 100%;
+            padding: 12px 16px;
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 10px;
+            color: #fff;
+            font-size: 14px;
+            outline: none;
+            transition: all 0.3s ease;
+        }
+
+        .search-input:focus {
+            border-color: var(--primary-red);
+            box-shadow: 0 0 10px rgba(211, 47, 47, 0.4);
+        }
+
+        .search-input::placeholder { color: var(--text-muted); }
+
+        #player-wrapper {
+            display: none;
+            width: 100%;
+            background: #000;
+            border-radius: 12px;
+            overflow: hidden;
+            margin-bottom: 20px;
+            border: 1px solid var(--primary-red);
+            box-shadow: 0 0 20px rgba(211, 47, 47, 0.3);
+        }
+
+        .video-container {
+            position: relative;
+            width: 100%;
+            height: 230px;
+            background: #000;
+        }
+
+        video, iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+            display: block;
+            background: #000;
+        }
+
+        .player-controls {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: #101015;
+            padding: 12px 15px;
+            border-top: 1px solid #222;
+        }
+
+        .playing-title {
+            font-size: 13px;
+            color: #fff;
+            font-weight: bold;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            width: 100%;
+        }
+
+        #room-chat-area {
+            display: none;
+            background: #121218;
+            border-top: 1px solid var(--card-border);
+            padding: 10px;
+        }
+
+        .chat-info-bar {
+            font-size: 11px;
+            color: #00e676;
+            margin-bottom: 8px;
+            font-weight: bold;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .chat-messages {
+            height: 120px;
+            overflow-y: auto;
+            background: #08080a;
+            border-radius: 8px;
+            padding: 8px;
+            margin-bottom: 8px;
+            font-size: 12px;
+        }
+
+        .chat-msg { margin-bottom: 4px; }
+        .chat-msg span { color: var(--glow-red); font-weight: bold; }
+
+        .chat-input-wrapper { display: flex; gap: 6px; }
+
+        .chat-input {
+            flex: 1;
+            padding: 6px 10px;
+            background: #1a1a24;
+            border: 1px solid var(--card-border);
+            border-radius: 6px;
+            color: #fff;
+            font-size: 12px;
+        }
+
+        .chat-send-btn {
+            background: var(--primary-red);
+            color: #fff;
+            border: none;
+            padding: 0 12px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        .match-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+        }
+
+        .match-card {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 12px;
+            padding: 12px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            position: relative;
+            overflow: hidden;
+            transition: transform 0.2s, border-color 0.2s;
+        }
+
+        .match-card:active {
+            transform: scale(0.97);
+            border-color: var(--primary-red);
+        }
+
+        .badge-time {
+            align-self: flex-start;
+            background: rgba(211, 47, 47, 0.15);
+            color: var(--glow-red);
+            border: 1px solid rgba(211, 47, 47, 0.3);
+            font-size: 10px;
+            font-weight: 800;
+            padding: 3px 8px;
+            border-radius: 6px;
+            margin-bottom: 8px;
+            text-transform: uppercase;
+        }
+
+        .match-name {
+            font-size: 12px;
+            font-weight: 700;
+            color: #ffffff;
+            line-height: 1.4;
+            margin-bottom: 12px;
+            min-height: 34px;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+
+        .card-actions {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .btn-play {
+            width: 100%;
+            background: linear-gradient(135deg, var(--primary-red), var(--dark-red));
+            color: #ffffff;
+            border: none;
+            padding: 8px 0;
+            border-radius: 8px;
+            font-weight: 800;
+            font-size: 11px;
+            letter-spacing: 0.5px;
+            cursor: pointer;
+            text-align: center;
+            box-shadow: 0 2px 8px rgba(211, 47, 47, 0.4);
+        }
+
+        .btn-room {
+            width: 100%;
+            background: rgba(0, 230, 118, 0.15);
+            color: #00e676;
+            border: 1px solid rgba(0, 230, 118, 0.3);
+            padding: 6px 0;
+            border-radius: 8px;
+            font-weight: 800;
+            font-size: 10px;
+            cursor: pointer;
+            text-align: center;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.85);
+            z-index: 999;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-content {
+            background: var(--card-bg);
+            border: 1px solid var(--primary-red);
+            border-radius: 12px;
+            padding: 20px;
+            width: 85%;
+            max-width: 320px;
+        }
+
+        .modal-title {
+            font-size: 14px;
+            font-weight: bold;
+            color: #fff;
+            margin-bottom: 12px;
+            text-align: center;
+        }
+
+        .modal-input {
+            width: 100%;
+            padding: 10px;
+            background: #08080a;
+            border: 1px solid var(--card-border);
+            border-radius: 6px;
+            color: #fff;
+            font-size: 13px;
+            margin-bottom: 10px;
+        }
+
+        .modal-btn {
+            width: 100%;
+            padding: 10px;
+            background: linear-gradient(135deg, var(--primary-red), var(--dark-red));
+            color: #fff;
+            border: none;
+            border-radius: 6px;
+            font-weight: bold;
+            font-size: 12px;
+            cursor: pointer;
+        }
+
+        #status-msg {
+            grid-column: span 2;
+            text-align: center;
+            padding: 30px;
+            color: var(--text-muted);
+            font-size: 13px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="header-container">
+        <img src="https://r.resimlink.com/X2pTo.png" style="max-height: 55px; display: block; margin: 0 auto;">
+    </div>
+
+    <div class="divider"></div>
+
+    <!-- HATA VE TEŞHİS KONSOLU (EKRANDA GÖRÜNÜR) -->
+    <div id="debugConsole">🛠 Mobil Konsol Başlatıldı...\n</div>
+
+    <div class="category-tabs">
+        <button class="tab-btn active" id="btn-maclar" onclick="kategoriDegistir('maclar')">⚡ Canlı Maçlar</button>
+        <button class="tab-btn" id="btn-kanallar" onclick="kategoriDegistir('kanallar')">📺 Kanallar</button>
+        <button class="tab-btn room-btn" onclick="modalAc()">👥 Odaya Katıl</button>
+    </div>
+
+    <div class="search-box">
+        <input type="text" id="searchInput" class="search-input" placeholder="Takım ismi girerek arayın..." oninput="filtrleMaclar()">
+    </div>
+
+    <div id="player-wrapper">
+        <div class="video-container" id="videoContainer">
+            <video id="mainVideo" controls playsinline style="display:none;"></video>
+            <iframe id="mainIframe" src="" style="display:none;" 
+                    allow="autoplay; fullscreen" 
+                    allowfullscreen 
+                    webkitallowfullscreen 
+                    mozallowfullscreen 
+                    sandbox="allow-scripts allow-same-origin allow-forms allow-presentation"></iframe>
+        </div>
+        <div class="player-controls">
+            <span class="playing-title" id="playingTitle">Yayın Yükleniyor...</span>
+        </div>
+
+        <div id="room-chat-area">
+            <div class="chat-info-bar">
+                <span id="roomCodeDisplay">ODA: -</span>
+                <span id="roomPassDisplay">ŞİFRE: -</span>
+            </div>
+            <div class="chat-messages" id="chatMessages"></div>
+            <div class="chat-input-wrapper">
+                <input type="text" id="chatInput" class="chat-input" placeholder="Mesaj yazın...">
+                <button class="chat-send-btn" onclick="mesajGonder()">Gönder</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="match-grid" id="matchGrid">
+        <div id="status-msg">Güncel canlı veriler yükleniyor...</div>
+    </div>
+
+    <div class="modal" id="roomModal">
+        <div class="modal-content">
+            <div class="modal-title">Ortak İzleme Odasına Katıl</div>
+            <input type="text" id="inputRoomCode" class="modal-input" placeholder="Oda Kodu (örn: 4819)">
+            <input type="text" id="inputRoomPass" class="modal-input" placeholder="Şifre">
+            <input type="text" id="inputNick" class="modal-input" placeholder="Kullanıcı Adınız" value="İzleyici">
+            <button class="modal-btn" onclick="odayaKatil()">GİRİŞ YAP VE İZLE</button>
+            <button class="modal-btn" style="background:#333; margin-top:6px;" onclick="modalKapat()">İPTAL</button>
+        </div>
+    </div>
+
+    <script>
+        // EKRANA LOG YAZDIRMA FONKSİYONU
+        function logToScreen(msg, type = 'info') {
+            const consoleBox = document.getElementById('debugConsole');
+            if (consoleBox) {
+                const time = new Date().toLocaleTimeString();
+                let className = 'debug-info';
+                if (type === 'err') className = 'debug-err';
+                if (type === 'warn') className = 'debug-warn';
+                
+                consoleBox.innerHTML += `<div class="${className}">[${time}] ${msg}</div>`;
+                consoleBox.scrollTop = consoleBox.scrollHeight;
+            }
+        }
+
+        window.onerror = function(msg, url, line) {
+            logToScreen(`KRİTİK HATA: ${msg} (Satır: ${line})`, 'err');
+        };
+
+        const firebaseConfig = {
+            databaseURL: "https://aether-306d8-default-rtdb.firebaseio.com"
+        };
+        if (!firebase.apps.length) {
+            firebase.initializeApp(firebaseConfig);
+        }
+        const db = firebase.database();
+
+        const API_HOST = 'https://mac-apiyeni-fiauoe2qm-tc2743618-9725s-projects.vercel.app';
+        const API_URL = API_HOST + '/api';
+
+        let tumMaclar = [];
+        let hlsPlayer = null;
+        let aktifKategori = 'maclar';
+        let aktifOdaKodu = null;
+        let kullaniciAdi = 'Kullanıcı_' + Math.floor(100 + Math.random() * 900);
+
+        function kanalMi(item) {
+            const baslik = (item.title || item.name || item.mac_adi || item.label || '').toLowerCase();
+            const kanalAnahtarlari = ['tv', 'spor', 'bein', 'exxen', 's sport', 'trt', 'cbc', 'tivibu', 'smart', 'a spor', 'atv', 'kanal'];
+            
+            const macAyraci = baslik.includes(' - ') || baslik.includes(' vs ') || baslik.includes(' v ');
+            const kanalKelimesi = kanalAnahtarlari.some(k => baslik.includes(k));
+
+            return kanalKelimesi && !macAyraci;
+        }
+
+        function kategoriDegistir(kategori) {
+            aktifKategori = kategori;
+            document.getElementById('btn-maclar').classList.toggle('active', kategori === 'maclar');
+            document.getElementById('btn-kanallar').classList.toggle('active', kategori === 'kanallar');
+
+            const input = document.getElementById('searchInput');
+            if(input) input.placeholder = kategori === 'maclar' ? 'Takım ismi girerek arayın...' : 'Kanal ismi girerek arayın...';
+
+            filtrleMaclar();
+        }
+
+        async function fetchMacApi() {
+            logToScreen("API Bağlantısı Başlatılıyor...", 'warn');
+
+            // 1. DİREKT API İSTEĞİ
+            try {
+                logToScreen("Denetim 1: Direkt Vercel API deneniyor...");
+                const response = await fetch(API_URL + '?t=' + Date.now(), {
+                    method: 'GET',
+                    cache: 'no-store'
+                });
+
+                logToScreen(`Direkt Yanıt: HTTP ${response.status}`, response.ok ? 'info' : 'err');
+
+                if (response.ok) {
+                    const text = await response.text();
+                    logToScreen(`Gelen Ham Veri Uzunluğu: ${text.length} karakter`);
+
+                    let data = JSON.parse(text);
+                    if (data && Array.isArray(data.maclar)) {
+                        logToScreen(`✅ Başarılı! Toplam ${data.maclar.length} maç çekildi.`, 'info');
+                        return data.maclar;
+                    }
+                    if (Array.isArray(data)) {
+                        logToScreen(`✅ Başarılı (Direkt Dizi)! Toplam ${data.length} maç çekildi.`, 'info');
+                        return data;
+                    }
+                }
+            } catch (directError) {
+                logToScreen(`❌ Direkt API Hatası: ${directError.message}`, 'err');
+            }
+
+            // 2. FALLBACK - ALLORIGINS
+            try {
+                logToScreen("Denetim 2: AllOrigins proxy deneniyor...", 'warn');
+                const proxyUrl = "https://api.allorigins.win/raw?url=" + encodeURIComponent(API_URL);
+                const response = await fetch(proxyUrl + "&t=" + Date.now(), { method: "GET", cache: "no-store" });
+
+                if (response.ok) {
+                    const text = await response.text();
+                    const data = JSON.parse(text);
+                    if (data && Array.isArray(data.maclar)) {
+                        logToScreen(`✅ AllOrigins İle Başarılı! ${data.maclar.length} maç.`, 'info');
+                        return data.maclar;
+                    }
+                }
+            } catch (proxyError) {
+                logToScreen(`❌ AllOrigins Proxy Hatası: ${proxyError.message}`, 'err');
+            }
+
+            // 3. FALLBACK - CORSPROXY
+            try {
+                logToScreen("Denetim 3: CorsProxy deneniyor...", 'warn');
+                const proxyUrl = "https://corsproxy.io/?" + encodeURIComponent(API_URL);
+                const response = await fetch(proxyUrl + "&t=" + Date.now(), { method: "GET", cache: "no-store" });
+
+                if (response.ok) {
+                    const text = await response.text();
+                    const data = JSON.parse(text);
+                    if (data && Array.isArray(data.maclar)) {
+                        logToScreen(`✅ CorsProxy İle Başarılı! ${data.maclar.length} maç.`, 'info');
+                        return data.maclar;
+                    }
+                }
+            } catch (corsError) {
+                logToScreen(`❌ CorsProxy Hatası: ${corsError.message}`, 'err');
+            }
+
+            throw new Error("Tüm bağlantı yolları engellendi veya başarısız oldu.");
+        }
+
+        async function maclariYukle() {
+            const grid = document.getElementById('matchGrid');
+            if (!grid) return;
+
+            grid.innerHTML = `
+                <div id="status-msg">
+                    <div style="font-size:30px;margin-bottom:10px;">🔄</div>
+                    <div>Güncel canlı maçlar yükleniyor...</div>
+                </div>
+            `;
+
+            try {
+                tumMaclar = await fetchMacApi();
+
+                if (!Array.isArray(tumMaclar) || tumMaclar.length === 0) {
+                    grid.innerHTML = `
+                        <div id="status-msg">
+                            <div style="font-size:30px;margin-bottom:10px;">⚠️</div>
+                            <div style="color:#fff;font-weight:800;">API bağlandı fakat maç listesi boş döndü.</div>
+                        </div>
+                    `;
+                    return;
+                }
+
+                filtrleMaclar();
+
+            } catch (error) {
+                logToScreen(`TÜM DENEMELER BAŞARISIZ: ${error.message}`, 'err');
+
+                grid.innerHTML = `
+                    <div id="status-msg">
+                        <div style="font-size:32px;margin-bottom:10px;">⚠️</div>
+                        <div style="color:#fff;font-weight:800;font-size:15px;">API bağlantısı başarısız</div>
+                        <div style="margin-top:10px;color:#a0a0b0;font-size:11px;line-height:1.6;">
+                            ${String(error.message || error)}
+                        </div>
+                        <button onclick="maclariYukle()" style="margin-top:15px;padding:10px 20px;border:0;border-radius:8px;background:#d32f2f;color:#fff;font-weight:800;cursor:pointer;">
+                            🔄 TEKRAR DENE
+                        </button>
+                    </div>
+                `;
+            }
+        }
+
+        function filtrleMaclar() {
+            const searchInput = document.getElementById('searchInput');
+            const query = searchInput ? searchInput.value.toLowerCase().trim() : '';
+
+            let islenmisListe = [];
+
+            if (aktifKategori === 'maclar') {
+                islenmisListe = tumMaclar.filter(m => !kanalMi(m));
+            } else {
+                islenmisListe = tumMaclar.filter(m => kanalMi(m));
+            }
+
+            if (islenmisListe.length === 0) {
+                islenmisListe = tumMaclar;
+            }
+
+            if (query !== '') {
+                islenmisListe = islenmisListe.filter(m => {
+                    const title = m.title || m.name || m.mac_adi || m.label || '';
+                    return title.toLowerCase().includes(query);
+                });
+            }
+
+            listeyiCiz(islenmisListe);
+        }
+
+        function listeyiCiz(liste) {
+            const grid = document.getElementById('matchGrid');
+            if (!grid) return;
+
+            grid.innerHTML = '';
+
+            if (liste.length === 0) {
+                grid.innerHTML = '<div id="status-msg">Aradığınız kriterlere uygun içerik bulunamadı.</div>';
+                return;
+            }
+
+            liste.forEach(mac => {
+                const baslik = mac.title || mac.name || mac.mac_adi || mac.label || 'Canlı Yayın';
+                const saat = mac.time || mac.saat || (aktifKategori === 'kanallar' ? '7/24' : 'CANLI');
+                const pageUrl = mac.pageUrl || mac.streamUrl || mac.url || mac.link || '';
+                const titleSafe = String(baslik).replace(/'/g, "\\'");
+
+                grid.innerHTML += `
+                    <div class="match-card">
+                        <div class="badge-time">${aktifKategori === 'kanallar' ? '📺 KANAL' : '⏰ ' + saat}</div>
+                        <div class="match-name">${baslik}</div>
+                        <div class="card-actions">
+                            <button class="btn-play" onclick="m3u8CekVeOynat('${pageUrl}', '${titleSafe}')">İZLE</button>
+                            <button class="btn-room" onclick="odaKur('${pageUrl}', '${titleSafe}')">👥 ODA KUR</button>
+                        </div>
+                    </div>
+                `;
+            });
+        }
+
+        async function m3u8CekVeOynat(pageUrl, baslik) {
+            const wrapper = document.getElementById('player-wrapper');
+            const video = document.getElementById('mainVideo');
+            const iframe = document.getElementById('mainIframe');
+            const titleSpan = document.getElementById('playingTitle');
+
+            if (wrapper) wrapper.style.display = 'block';
+            if (titleSpan) titleSpan.innerText = baslik + ' (Yayın Alınıyor...)';
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+
+            try {
+                let playUrl = pageUrl;
+                let isM3u8 = false;
+
+                if (pageUrl && !pageUrl.includes('.m3u8')) {
+                    const streamResponse = await fetch(
+                        `${API_HOST}/api?getStream=1&url=${encodeURIComponent(pageUrl)}`,
+                        {
+                            method: 'GET',
+                            mode: 'cors',
+                            cache: 'no-store',
+                            headers: { 'Accept': 'application/json' }
+                        }
+                    );
+
+                    if (!streamResponse.ok) {
+                        throw new Error('Yayın API HTTP hatası: ' + streamResponse.status);
+                    }
+
+                    const streamData = await streamResponse.json();
+
+                    if (streamData && (streamData.basarili || streamData.streamUrl)) {
+                        if (streamData.type === 'm3u8' || (streamData.streamUrl && streamData.streamUrl.includes('.m3u8'))) {
+                            playUrl = streamData.proxyStreamUrl ? `${API_HOST}${streamData.proxyStreamUrl}` : streamData.streamUrl;
+                            isM3u8 = true;
+                        } else {
+                            playUrl = streamData.streamUrl;
+                        }
+                    }
+                } else if (pageUrl && pageUrl.includes('.m3u8')) {
+                    playUrl = `${API_HOST}/api?proxyUrl=${encodeURIComponent(pageUrl)}`;
+                    isM3u8 = true;
+                }
+
+                if (titleSpan) titleSpan.innerText = baslik;
+
+                if (hlsPlayer) {
+                    hlsPlayer.destroy();
+                    hlsPlayer = null;
+                }
+
+                if (isM3u8) {
+                    if (iframe) {
+                        iframe.style.display = 'none';
+                        iframe.src = '';
+                    }
+                    if (video) {
+                        video.style.display = 'block';
+
+                        if (Hls.isSupported()) {
+                            hlsPlayer = new Hls();
+                            hlsPlayer.loadSource(playUrl);
+                            hlsPlayer.attachMedia(video);
+                            hlsPlayer.on(Hls.Events.MANIFEST_PARSED, function() {
+                                video.play().catch(() => {});
+                            });
+                        } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+                            video.src = playUrl;
+                            video.play().catch(() => {});
+                        }
+                    }
+                } else if (playUrl) {
+                    if (video) {
+                        video.pause();
+                        video.style.display = 'none';
+                    }
+                    if (iframe) {
+                        iframe.style.display = 'block';
+                        iframe.src = playUrl;
+                    }
+                } else {
+                    if (titleSpan) titleSpan.innerText = 'Yayın adresi alınamadı.';
+                }
+                return playUrl;
+            } catch (err) {
+                if (titleSpan) titleSpan.innerText = 'Yayın yüklenirken hata oluştu.';
+                return null;
+            }
+        }
+
+        async function odaKur(pageUrl, baslik) {
+            const playUrl = await m3u8CekVeOynat(pageUrl, baslik);
+            if (!playUrl) return;
+
+            const odaKodu = Math.floor(1000 + Math.random() * 9000).toString();
+            const sifre = Math.floor(100 + Math.random() * 900).toString();
+
+            db.ref('odalar/' + odaKodu).set({
+                baslik: baslik,
+                streamUrl: playUrl,
+                sifre: sifre,
+                olusturulma: Date.now()
+            });
+
+            aktifOdaKatil(odaKodu, sifre, baslik);
+        }
+
+        function modalAc() { document.getElementById('roomModal').style.display = 'flex'; }
+        function modalKapat() { document.getElementById('roomModal').style.display = 'none'; }
+
+        async function odayaKatil() {
+            const kod = document.getElementById('inputRoomCode').value.trim();
+            const sifre = document.getElementById('inputRoomPass').value.trim();
+            const nick = document.getElementById('inputNick').value.trim();
+
+            if (!kod || !sifre) { alert('Lütfen kod ve şifre girin!'); return; }
+            if (nick) kullaniciAdi = nick;
+
+            const snapshot = await db.ref('odalar/' + kod).once('value');
+            const odaData = snapshot.val();
+
+            if (odaData && odaData.sifre === sifre) {
+                modalKapat();
+                await m3u8CekVeOynat(odaData.streamUrl, odaData.baslik);
+                aktifOdaKatil(kod, sifre, odaData.baslik);
+            } else {
+                alert('Oda bulunamadı veya şifre yanlış!');
+            }
+        }
+
+        function aktifOdaKatil(kod, sifre, baslik) {
+            aktifOdaKodu = kod;
+            document.getElementById('room-chat-area').style.display = 'block';
+            document.getElementById('roomCodeDisplay').innerText = 'ODA: ' + kod;
+            document.getElementById('roomPassDisplay').innerText = 'ŞİFRE: ' + sifre;
+
+            db.ref('odalar/' + kod + '/mesajlar').off();
+            db.ref('odalar/' + kod + '/mesajlar').limitToLast(20).on('child_added', (snapshot) => {
+                const msg = snapshot.val();
+                const chatBox = document.getElementById('chatMessages');
+                chatBox.innerHTML += `<div class="chat-msg"><span>${msg.gonderen}:</span> ${msg.metin}</div>`;
+                chatBox.scrollTop = chatBox.scrollHeight;
+            });
+        }
+
+        function mesajGonder() {
+            const input = document.getElementById('chatInput');
+            const txt = input.value.trim();
+            if (!txt || !aktifOdaKodu) return;
+
+            db.ref('odalar/' + aktifOdaKodu + '/mesajlar').push({
+                gonderen: kullaniciAdi,
+                metin: txt,
+                tarih: Date.now()
+            });
+            input.value = '';
+        }
+
+        document.addEventListener('DOMContentLoaded', maclariYukle);
+    </script>
+</body>
+</html>
