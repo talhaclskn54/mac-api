@@ -2,696 +2,434 @@
 <html lang="tr">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>AETHER MAÇ - ORTAK İZLEME</title>
-    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
-    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
-
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Canlı Maç İzle</title>
+    <!-- HLS.js Kütüphanesi -->
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@1"></script>
     <style>
         :root {
-            --bg-color: #08080a;
-            --card-bg: #121218;
-            --card-border: #222230;
-            --primary-red: #d32f2f;
-            --dark-red: #8b0000;
-            --glow-red: #ff1744;
-            --text-main: #ffffff;
-            --text-muted: #a0a0b0;
+            --bg-color: #0f172a;
+            --card-bg: #1e293b;
+            --primary: #3b82f6;
+            --primary-hover: #2563eb;
+            --text: #f8fafc;
+            --text-muted: #94a3b8;
+            --border: #334155;
+            --danger: #ef4444;
+            --success: #10b981;
         }
 
         * {
-            box-sizing: border-box;
             margin: 0;
             padding: 0;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            -webkit-tap-highlight-color: transparent;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
         }
 
         body {
             background-color: var(--bg-color);
-            color: var(--text-main);
+            color: var(--text);
             padding: 15px;
-            padding-bottom: 30px;
+            padding-bottom: 80px;
         }
 
-        .header-container {
+        .header {
             text-align: center;
-            margin-top: 10px;
-            margin-bottom: 5px;
+            margin-bottom: 25px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid var(--border);
         }
 
-        .divider {
-            height: 2px;
-            width: 100%;
-            background: linear-gradient(90deg, transparent, var(--primary-red), var(--glow-red), var(--primary-red), transparent);
-            margin: 8px 0 15px 0;
-            box-shadow: 0 0 8px var(--primary-red);
+        .header h1 {
+            color: var(--primary);
+            font-size: 24px;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 1px;
         }
 
-        .category-tabs {
-            display: flex;
-            gap: 10px;
-            overflow-x: auto;
-            padding-bottom: 5px;
-            margin-bottom: 15px;
-            white-space: nowrap;
-            -webkit-overflow-scrolling: touch;
-        }
-
-        .category-tabs::-webkit-scrollbar { display: none; }
-
-        .tab-btn {
-            background: rgba(211, 47, 47, 0.1);
-            color: var(--text-muted);
-            border: 1px solid var(--card-border);
-            padding: 8px 18px;
+        .status-badge {
+            display: inline-block;
+            background: rgba(16, 185, 129, 0.2);
+            color: var(--success);
+            padding: 4px 12px;
             border-radius: 20px;
             font-size: 12px;
-            font-weight: 700;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            flex-shrink: 0;
+            font-weight: 600;
+            margin-top: 8px;
         }
 
-        .tab-btn.active {
-            background: linear-gradient(135deg, var(--primary-red), var(--dark-red));
-            color: #ffffff;
-            border-color: var(--glow-red);
-            box-shadow: 0 0 10px rgba(211, 47, 47, 0.5);
+        .match-list {
+            display: grid;
+            gap: 12px;
+            grid-template-columns: 1fr;
         }
 
-        .tab-btn.room-btn {
-            background: rgba(0, 230, 118, 0.1);
-            border-color: rgba(0, 230, 118, 0.3);
-            color: #00e676;
-        }
-
-        .search-box {
-            position: relative;
-            margin-bottom: 20px;
-        }
-
-        .search-input {
-            width: 100%;
-            padding: 12px 16px;
+        .match-card {
             background: var(--card-bg);
-            border: 1px solid var(--card-border);
-            border-radius: 10px;
-            color: #fff;
-            font-size: 14px;
-            outline: none;
-            transition: all 0.3s ease;
-        }
-
-        .search-input:focus {
-            border-color: var(--primary-red);
-            box-shadow: 0 0 10px rgba(211, 47, 47, 0.4);
-        }
-
-        .search-input::placeholder { color: var(--text-muted); }
-
-        #player-wrapper {
-            display: none;
-            width: 100%;
-            background: #000;
+            border: 1px solid var(--border);
             border-radius: 12px;
+            padding: 16px;
+            transition: all 0.2s ease;
+            cursor: pointer;
+            position: relative;
             overflow: hidden;
-            margin-bottom: 20px;
-            border: 1px solid var(--primary-red);
-            box-shadow: 0 0 20px rgba(211, 47, 47, 0.3);
+        }
+
+        .match-card:active {
+            transform: scale(0.98);
+        }
+
+        .match-card::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 4px;
+            height: 100%;
+            background: var(--primary);
+        }
+
+        .match-time {
+            color: var(--primary);
+            font-weight: 800;
+            font-size: 18px;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .match-time .live-indicator {
+            width: 8px;
+            height: 8px;
+            background: var(--danger);
+            border-radius: 50%;
+            display: inline-block;
+            animation: pulse 2s infinite;
+        }
+
+        .match-title {
+            font-size: 16px;
+            font-weight: 600;
+            line-height: 1.4;
+            color: var(--text);
+            margin-bottom: 12px;
+        }
+
+        .watch-btn {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 14px;
+            width: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        /* Video Modal Styles */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.95);
+            z-index: 1000;
+            flex-direction: column;
+        }
+
+        .modal.active {
+            display: flex;
+        }
+
+        .modal-header {
+            padding: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: var(--bg-color);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .modal-title {
+            font-size: 16px;
+            font-weight: 600;
+            flex: 1;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            padding-right: 10px;
+        }
+
+        .close-btn {
+            background: var(--danger);
+            color: white;
+            border: none;
+            width: 32px;
+            height: 32px;
+            border-radius: 8px;
+            font-weight: bold;
+            font-size: 18px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
 
         .video-container {
-            position: relative;
+            flex: 1;
             width: 100%;
-            height: 230px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
             background: #000;
+            position: relative;
         }
 
         video, iframe {
             width: 100%;
             height: 100%;
             border: none;
-            display: block;
-            background: #000;
+            aspect-ratio: 16/9;
         }
 
-        .player-controls {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            background: #101015;
-            padding: 12px 15px;
-            border-top: 1px solid #222;
-        }
-
-        .playing-title {
-            font-size: 13px;
-            color: #fff;
-            font-weight: bold;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            width: 100%;
-        }
-
-        #room-chat-area {
-            display: none;
-            background: #121218;
-            border-top: 1px solid var(--card-border);
-            padding: 10px;
-        }
-
-        .chat-info-bar {
-            font-size: 11px;
-            color: #00e676;
-            margin-bottom: 8px;
-            font-weight: bold;
-            display: flex;
-            justify-content: space-between;
-        }
-
-        .chat-messages {
-            height: 120px;
-            overflow-y: auto;
-            background: #08080a;
-            border-radius: 8px;
-            padding: 8px;
-            margin-bottom: 8px;
-            font-size: 12px;
-        }
-
-        .chat-msg { margin-bottom: 4px; }
-        .chat-msg span { color: var(--glow-red); font-weight: bold; }
-
-        .chat-input-wrapper { display: flex; gap: 6px; }
-
-        .chat-input {
-            flex: 1;
-            padding: 6px 10px;
-            background: #1a1a24;
-            border: 1px solid var(--card-border);
-            border-radius: 6px;
-            color: #fff;
-            font-size: 12px;
-        }
-
-        .chat-send-btn {
-            background: var(--primary-red);
-            color: #fff;
-            border: none;
-            padding: 0 12px;
-            border-radius: 6px;
-            font-size: 12px;
-            font-weight: bold;
-            cursor: pointer;
-        }
-
-        .match-grid {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 12px;
-        }
-
-        .match-card {
-            background: var(--card-bg);
-            border: 1px solid var(--card-border);
-            border-radius: 12px;
-            padding: 12px;
-            display: flex;
-            flex-direction: column;
-            justify-content: space-between;
-            position: relative;
-            overflow: hidden;
-            transition: transform 0.2s, border-color 0.2s;
-        }
-
-        .match-card:active {
-            transform: scale(0.97);
-            border-color: var(--primary-red);
-        }
-
-        .badge-time {
-            align-self: flex-start;
-            background: rgba(211, 47, 47, 0.15);
-            color: var(--glow-red);
-            border: 1px solid rgba(211, 47, 47, 0.3);
-            font-size: 10px;
-            font-weight: 800;
-            padding: 3px 8px;
-            border-radius: 6px;
-            margin-bottom: 8px;
-            text-transform: uppercase;
-        }
-
-        .match-name {
-            font-size: 12px;
-            font-weight: 700;
-            color: #ffffff;
-            line-height: 1.4;
-            margin-bottom: 12px;
-            min-height: 34px;
-            display: -webkit-box;
-            -webkit-line-clamp: 2;
-            -webkit-box-orient: vertical;
-            overflow: hidden;
-        }
-
-        .card-actions {
-            display: flex;
-            flex-direction: column;
-            gap: 6px;
-        }
-
-        .btn-play {
-            width: 100%;
-            background: linear-gradient(135deg, var(--primary-red), var(--dark-red));
-            color: #ffffff;
-            border: none;
-            padding: 8px 0;
-            border-radius: 8px;
-            font-weight: 800;
-            font-size: 11px;
-            letter-spacing: 0.5px;
-            cursor: pointer;
+        .loading {
             text-align: center;
-            box-shadow: 0 2px 8px rgba(211, 47, 47, 0.4);
-        }
-
-        .btn-room {
-            width: 100%;
-            background: rgba(0, 230, 118, 0.15);
-            color: #00e676;
-            border: 1px solid rgba(0, 230, 118, 0.3);
-            padding: 6px 0;
-            border-radius: 8px;
-            font-weight: 800;
-            font-size: 10px;
-            cursor: pointer;
-            text-align: center;
-        }
-
-        .modal {
-            display: none;
-            position: fixed;
-            top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0, 0, 0, 0.85);
-            z-index: 999;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .modal-content {
-            background: var(--card-bg);
-            border: 1px solid var(--primary-red);
-            border-radius: 12px;
-            padding: 20px;
-            width: 85%;
-            max-width: 320px;
-        }
-
-        .modal-title {
-            font-size: 14px;
-            font-weight: bold;
-            color: #fff;
-            margin-bottom: 12px;
-            text-align: center;
-        }
-
-        .modal-input {
-            width: 100%;
-            padding: 10px;
-            background: #08080a;
-            border: 1px solid var(--card-border);
-            border-radius: 6px;
-            color: #fff;
-            font-size: 13px;
-            margin-bottom: 10px;
-        }
-
-        .modal-btn {
-            width: 100%;
-            padding: 10px;
-            background: linear-gradient(135deg, var(--primary-red), var(--dark-red));
-            color: #fff;
-            border: none;
-            border-radius: 6px;
-            font-weight: bold;
-            font-size: 12px;
-            cursor: pointer;
-        }
-
-        #status-msg {
-            grid-column: span 2;
-            text-align: center;
-            padding: 30px;
+            padding: 40px 20px;
             color: var(--text-muted);
-            font-size: 13px;
+        }
+
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid var(--border);
+            border-top-color: var(--primary);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 15px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        @keyframes pulse {
+            0% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.5; transform: scale(1.5); }
+            100% { opacity: 1; transform: scale(1); }
+        }
+        
+        .error-message {
+            color: var(--danger);
+            text-align: center;
+            padding: 20px;
+            background: rgba(239, 68, 68, 0.1);
+            border-radius: 8px;
+            margin: 20px 0;
+            font-weight: 600;
         }
     </style>
 </head>
 <body>
 
-    <div class="header-container">
-        <img src="https://r.resimlink.com/X2pTo.png" style="max-height: 55px; display: block; margin: 0 auto;">
+    <div class="header">
+        <h1>CANLI YAYINLAR</h1>
+        <div class="status-badge" id="status-text">Bağlanıyor...</div>
     </div>
 
-    <div class="divider"></div>
-
-    <div class="category-tabs">
-        <button class="tab-btn active" id="btn-maclar" onclick="kategoriDegistir('maclar')">⚡ Canlı Maçlar</button>
-        <button class="tab-btn" id="btn-kanallar" onclick="kategoriDegistir('kanallar')">📺 Kanallar</button>
-        <button class="tab-btn room-btn" onclick="modalAc()">👥 Odaya Katıl</button>
+    <div id="loading" class="loading">
+        <div class="spinner"></div>
+        <p>Maçlar yükleniyor, lütfen bekleyin...</p>
     </div>
 
-    <div class="search-box">
-        <input type="text" id="searchInput" class="search-input" placeholder="Takım ismi girerek arayın..." oninput="filtrleMaclar()">
-    </div>
+    <div class="match-list" id="matchList"></div>
 
-    <div id="player-wrapper">
+    <!-- Video Modal -->
+    <div class="modal" id="videoModal">
+        <div class="modal-header">
+            <div class="modal-title" id="modalTitle">Yayın Yükleniyor...</div>
+            <button class="close-btn" onclick="closeModal()">×</button>
+        </div>
         <div class="video-container" id="videoContainer">
-            <video id="mainVideo" controls playsinline style="display:none;"></video>
-            <iframe id="mainIframe" src="" style="display:none;" 
-                    allow="autoplay; fullscreen" 
-                    allowfullscreen 
-                    webkitallowfullscreen 
-                    mozallowfullscreen 
-                    sandbox="allow-scripts allow-same-origin allow-forms allow-presentation"></iframe>
-        </div>
-        <div class="player-controls">
-            <span class="playing-title" id="playingTitle">Yayın Yükleniyor...</span>
-        </div>
-
-        <div id="room-chat-area">
-            <div class="chat-info-bar">
-                <span id="roomCodeDisplay">ODA: -</span>
-                <span id="roomPassDisplay">ŞİFRE: -</span>
+            <div id="videoLoading" class="loading">
+                <div class="spinner"></div>
+                <p>Yayın bağlantısı hazırlanıyor...</p>
             </div>
-            <div class="chat-messages" id="chatMessages"></div>
-            <div class="chat-input-wrapper">
-                <input type="text" id="chatInput" class="chat-input" placeholder="Mesaj yazın...">
-                <button class="chat-send-btn" onclick="mesajGonder()">Gönder</button>
-            </div>
-        </div>
-    </div>
-
-    <div class="match-grid" id="matchGrid">
-        <div id="status-msg">Güncel canlı veriler yükleniyor...</div>
-    </div>
-
-    <div class="modal" id="roomModal">
-        <div class="modal-content">
-            <div class="modal-title">Ortak İzleme Odasına Katıl</div>
-            <input type="text" id="inputRoomCode" class="modal-input" placeholder="Oda Kodu (örn: 4819)">
-            <input type="text" id="inputRoomPass" class="modal-input" placeholder="Şifre">
-            <input type="text" id="inputNick" class="modal-input" placeholder="Kullanıcı Adınız" value="İzleyici">
-            <button class="modal-btn" onclick="odayaKatil()">GİRİŞ YAP VE İZLE</button>
-            <button class="modal-btn" style="background:#333; margin-top:6px;" onclick="modalKapat()">İPTAL</button>
+            <!-- Video veya Iframe buraya eklenecek -->
         </div>
     </div>
 
     <script>
-        const firebaseConfig = {
-            databaseURL: "https://aether-306d8-default-rtdb.firebaseio.com"
-        };
-        if (!firebase.apps.length) {
-            firebase.initializeApp(firebaseConfig);
-        }
-        const db = firebase.database();
+        // API adresi olarak sayfanın çalıştığı mevcut adresi otomatik alır
+        const API_URL = window.location.origin;
+        let currentHls = null;
 
-        const API_HOST = window.location.origin;
-        const API_URL = API_HOST + '/api';
-
-        let tumMaclar = [];
-        let hlsPlayer = null;
-        let aktifKategori = 'maclar';
-        let aktifOdaKodu = null;
-        let kullaniciAdi = 'Kullanıcı_' + Math.floor(100 + Math.random() * 900);
-
-        function kanalMi(item) {
-            const baslik = (item.title || item.name || item.mac_adi || item.label || '').toLowerCase();
-            const kanalAnahtarlari = ['tv', 'spor', 'bein', 'exxen', 's sport', 'trt', 'cbc', 'tivibu', 'smart', 'a spor', 'atv', 'kanal'];
-            
-            const macAyraci = baslik.includes(' - ') || baslik.includes(' vs ') || baslik.includes(' v ');
-            const kanalKelimesi = kanalAnahtarlari.some(k => baslik.includes(k));
-
-            return kanalKelimesi && !macAyraci;
-        }
-
-        function kategoriDegistir(kategori) {
-            aktifKategori = kategori;
-            document.getElementById('btn-maclar').classList.toggle('active', kategori === 'maclar');
-            document.getElementById('btn-kanallar').classList.toggle('active', kategori === 'kanallar');
-
-            const input = document.getElementById('searchInput');
-            if(input) input.placeholder = kategori === 'maclar' ? 'Takım ismi girerek arayın...' : 'Kanal ismi girerek arayın...';
-
-            filtrleMaclar();
-        }
-
-        async function fetchMacApi() {
-            const response = await fetch(API_URL + '?t=' + Date.now(), { method: 'GET', cache: 'no-store' });
-            if (response.ok) {
+        // Maç Listesini Çek
+        async function fetchMatches() {
+            try {
+                // Sona ?api=1 ekleyerek index.js'in JSON verisi dönmesini sağlıyoruz
+                const response = await fetch(`${API_URL}/?api=1`);
+                if (!response.ok) throw new Error(`HTTP Hata: ${response.status}`);
+                
                 const data = await response.json();
-                return data.maclar || data;
-            }
-            throw new Error("API isteği başarısız.");
-        }
-
-        async function maclariYukle() {
-            const grid = document.getElementById('matchGrid');
-            if (!grid) return;
-
-            grid.innerHTML = `
-                <div id="status-msg">
-                    <div style="font-size:30px;margin-bottom:10px;">🔄</div>
-                    <div>Güncel canlı maçlar yükleniyor...</div>
-                </div>
-            `;
-
-            try {
-                tumMaclar = await fetchMacApi();
-
-                if (!Array.isArray(tumMaclar) || tumMaclar.length === 0) {
-                    grid.innerHTML = `<div id="status-msg">Maç listesi şu anda boş.</div>`;
-                    return;
-                }
-
-                filtrleMaclar();
-
-            } catch (error) {
-                grid.innerHTML = `
-                    <div id="status-msg">
-                        <div style="font-size:32px;margin-bottom:10px;">⚠️</div>
-                        <div style="color:#fff;font-weight:800;font-size:15px;">Bağlantı Kurulamadı</div>
-                        <button onclick="maclariYukle()" style="margin-top:15px;padding:10px 20px;border:0;border-radius:8px;background:#d32f2f;color:#fff;font-weight:800;cursor:pointer;">
-                            🔄 TEKRAR DENE
-                        </button>
-                    </div>
-                `;
-            }
-        }
-
-        function filtrleMaclar() {
-            const searchInput = document.getElementById('searchInput');
-            const query = searchInput ? searchInput.value.toLowerCase().trim() : '';
-
-            let islenmisListe = [];
-
-            if (aktifKategori === 'maclar') {
-                islenmisListe = tumMaclar.filter(m => !kanalMi(m));
-            } else {
-                islenmisListe = tumMaclar.filter(m => kanalMi(m));
-            }
-
-            if (islenmisListe.length === 0) {
-                islenmisListe = tumMaclar;
-            }
-
-            if (query !== '') {
-                islenmisListe = islenmisListe.filter(m => {
-                    const title = m.title || m.name || m.mac_adi || m.label || '';
-                    return title.toLowerCase().includes(query);
-                });
-            }
-
-            listeyiCiz(islenmisListe);
-        }
-
-        function listeyiCiz(liste) {
-            const grid = document.getElementById('matchGrid');
-            if (!grid) return;
-
-            grid.innerHTML = '';
-
-            if (liste.length === 0) {
-                grid.innerHTML = '<div id="status-msg">Aradığınız kriterlere uygun içerik bulunamadı.</div>';
-                return;
-            }
-
-            liste.forEach(mac => {
-                const baslik = mac.title || mac.name || mac.mac_adi || mac.label || 'Canlı Yayın';
-                const saat = mac.time || mac.saat || (aktifKategori === 'kanallar' ? '7/24' : 'CANLI');
-                const pageUrl = mac.pageUrl || mac.streamUrl || mac.url || mac.link || '';
-                const titleSafe = String(baslik).replace(/'/g, "\\'");
-
-                grid.innerHTML += `
-                    <div class="match-card">
-                        <div class="badge-time">${aktifKategori === 'kanallar' ? '📺 KANAL' : '⏰ ' + saat}</div>
-                        <div class="match-name">${baslik}</div>
-                        <div class="card-actions">
-                            <button class="btn-play" onclick="m3u8CekVeOynat('${pageUrl}', '${titleSafe}')">İZLE</button>
-                            <button class="btn-room" onclick="odaKur('${pageUrl}', '${titleSafe}')">👥 ODA KUR</button>
-                        </div>
-                    </div>
-                `;
-            });
-        }
-
-        async function m3u8CekVeOynat(pageUrl, baslik) {
-            const wrapper = document.getElementById('player-wrapper');
-            const video = document.getElementById('mainVideo');
-            const iframe = document.getElementById('mainIframe');
-            const titleSpan = document.getElementById('playingTitle');
-
-            if (wrapper) wrapper.style.display = 'block';
-            if (titleSpan) titleSpan.innerText = baslik + ' (Yayın Alınıyor...)';
-            window.scrollTo({ top: 0, behavior: 'smooth' });
-
-            try {
-                let playUrl = pageUrl;
-                let isM3u8 = false;
-
-                if (pageUrl && !pageUrl.includes('.m3u8')) {
-                    const streamResponse = await fetch(
-                        `${API_HOST}/api?getStream=1&url=${encodeURIComponent(pageUrl)}`,
-                        { method: 'GET', cache: 'no-store' }
-                    );
-
-                    if (!streamResponse.ok) throw new Error('API Hatası');
-
-                    const streamData = await streamResponse.json();
-
-                    if (streamData && (streamData.basarili || streamData.streamUrl)) {
-                        if (streamData.type === 'm3u8' || (streamData.streamUrl && streamData.streamUrl.includes('.m3u8'))) {
-                            playUrl = streamData.proxyStreamUrl ? `${API_HOST}${streamData.proxyStreamUrl}` : streamData.streamUrl;
-                            isM3u8 = true;
-                        } else {
-                            playUrl = streamData.streamUrl;
-                        }
-                    }
-                } else if (pageUrl && pageUrl.includes('.m3u8')) {
-                    playUrl = `${API_HOST}/api?proxyUrl=${encodeURIComponent(pageUrl)}`;
-                    isM3u8 = true;
-                }
-
-                if (titleSpan) titleSpan.innerText = baslik;
-
-                if (hlsPlayer) {
-                    hlsPlayer.destroy();
-                    hlsPlayer = null;
-                }
-
-                if (isM3u8) {
-                    if (iframe) { iframe.style.display = 'none'; iframe.src = ''; }
-                    if (video) {
-                        video.style.display = 'block';
-
-                        if (Hls.isSupported()) {
-                            hlsPlayer = new Hls();
-                            hlsPlayer.loadSource(playUrl);
-                            hlsPlayer.attachMedia(video);
-                            hlsPlayer.on(Hls.Events.MANIFEST_PARSED, function() {
-                                video.play().catch(() => {});
-                            });
-                        } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-                            video.src = playUrl;
-                            video.play().catch(() => {});
-                        }
-                    }
-                } else if (playUrl) {
-                    if (video) { video.pause(); video.style.display = 'none'; }
-                    if (iframe) { iframe.style.display = 'block'; iframe.src = playUrl; }
+                
+                if (data.basarili && data.maclar.length > 0) {
+                    document.getElementById('status-text').textContent = `${data.toplam} Maç Bulundu`;
+                    renderMatches(data.maclar);
                 } else {
-                    if (titleSpan) titleSpan.innerText = 'Yayın adresi alınamadı.';
+                    showError("Şu an canlı maç bulunmuyor veya sisteme erişilemedi.");
                 }
-                return playUrl;
-            } catch (err) {
-                if (titleSpan) titleSpan.innerText = 'Yayın yüklenirken hata oluştu.';
-                return null;
+            } catch (error) {
+                console.error("Fetch hatası:", error);
+                showError("Sunucuya bağlanılamadı. Uygulamayı yeniden başlatın.");
             }
         }
 
-        async function odaKur(pageUrl, baslik) {
-            const playUrl = await m3u8CekVeOynat(pageUrl, baslik);
-            if (!playUrl) return;
+        // Maçları Ekrana Bas
+        function renderMatches(maclar) {
+            const list = document.getElementById('matchList');
+            document.getElementById('loading').style.display = 'none';
+            list.innerHTML = '';
 
-            const odaKodu = Math.floor(1000 + Math.random() * 9000).toString();
-            const sifre = Math.floor(100 + Math.random() * 900).toString();
+            maclar.forEach(mac => {
+                const card = document.createElement('div');
+                card.className = 'match-card';
+                
+                const isLive = mac.time.toUpperCase() === 'CANLI';
+                
+                card.innerHTML = `
+                    <div class="match-time">
+                        ${isLive ? '<span class="live-indicator"></span> CANLI' : '🕒 ' + mac.time}
+                    </div>
+                    <div class="match-title">${mac.title}</div>
+                    <button class="watch-btn">
+                        ▶ Hızlı İzle
+                    </button>
+                `;
 
-            db.ref('odalar/' + odaKodu).set({
-                baslik: baslik,
-                streamUrl: playUrl,
-                sifre: sifre,
-                olusturulma: Date.now()
+                card.onclick = () => openStream(mac.pageUrl, mac.title);
+                list.appendChild(card);
             });
-
-            aktifOdaKatil(odaKodu, sifre, baslik);
         }
 
-        function modalAc() { document.getElementById('roomModal').style.display = 'flex'; }
-        function modalKapat() { document.getElementById('roomModal').style.display = 'none'; }
+        // Yayın Bağlantısını Çek ve Oynat
+        async function openStream(url, title) {
+            const modal = document.getElementById('videoModal');
+            const container = document.getElementById('videoContainer');
+            const titleEl = document.getElementById('modalTitle');
+            const loading = document.getElementById('videoLoading');
+            
+            modal.classList.add('active');
+            titleEl.textContent = title;
+            
+            // Temizlik
+            if (currentHls) {
+                currentHls.destroy();
+                currentHls = null;
+            }
+            container.querySelectorAll('video, iframe, .error-message').forEach(el => el.remove());
+            loading.style.display = 'block';
 
-        async function odayaKatil() {
-            const kod = document.getElementById('inputRoomCode').value.trim();
-            const sifre = document.getElementById('inputRoomPass').value.trim();
-            const nick = document.getElementById('inputNick').value.trim();
+            try {
+                // Yayını çeken istek (Yine kendi sunucumuza)
+                const response = await fetch(`${API_URL}/?getStream=true&url=${encodeURIComponent(url)}`);
+                const data = await response.json();
 
-            if (!kod || !sifre) { alert('Lütfen kod ve şifre girin!'); return; }
-            if (nick) kullaniciAdi = nick;
+                loading.style.display = 'none';
 
-            const snapshot = await db.ref('odalar/' + kod).once('value');
-            const odaData = snapshot.val();
-
-            if (odaData && odaData.sifre === sifre) {
-                modalKapat();
-                await m3u8CekVeOynat(odaData.streamUrl, odaData.baslik);
-                aktifOdaKatil(kod, sifre, odaData.baslik);
-            } else {
-                alert('Oda bulunamadı veya şifre yanlış!');
+                if (data.basarili) {
+                    if (data.type === 'm3u8' && data.proxyStreamUrl) {
+                        playM3U8(`${API_URL}${data.proxyStreamUrl}`);
+                    } else if (data.type === 'iframe') {
+                        playIframe(data.streamUrl);
+                    } else {
+                        showVideoError("Desteklenmeyen yayın formatı.");
+                    }
+                } else {
+                    showVideoError(data.message || "Yayın adresi bulunamadı.");
+                }
+            } catch (error) {
+                loading.style.display = 'none';
+                showVideoError("Yayın çekilirken hata oluştu.");
             }
         }
 
-        function aktifOdaKatil(kod, sifre, baslik) {
-            aktifOdaKodu = kod;
-            document.getElementById('room-chat-area').style.display = 'block';
-            document.getElementById('roomCodeDisplay').innerText = 'ODA: ' + kod;
-            document.getElementById('roomPassDisplay').innerText = 'ŞİFRE: ' + sifre;
+        // M3U8 Oynatıcı (HLS.js)
+        function playM3U8(streamUrl) {
+            const container = document.getElementById('videoContainer');
+            const video = document.createElement('video');
+            video.controls = true;
+            video.autoplay = true;
+            video.setAttribute('playsinline', '');
+            container.appendChild(video);
 
-            db.ref('odalar/' + kod + '/mesajlar').off();
-            db.ref('odalar/' + kod + '/mesajlar').limitToLast(20).on('child_added', (snapshot) => {
-                const msg = snapshot.val();
-                const chatBox = document.getElementById('chatMessages');
-                chatBox.innerHTML += `<div class="chat-msg"><span>${msg.gonderen}:</span> ${msg.metin}</div>`;
-                chatBox.scrollTop = chatBox.scrollHeight;
+            if (Hls.isSupported()) {
+                currentHls = new Hls({
+                    enableWorker: true,
+                    lowLatencyMode: true,
+                });
+                currentHls.loadSource(streamUrl);
+                currentHls.attachMedia(video);
+                currentHls.on(Hls.Events.ERROR, function (event, data) {
+                    if (data.fatal) {
+                        console.error('HLS Hatası:', data);
+                    }
+                });
+            } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+                // iOS cihazlar için doğal destek
+                video.src = streamUrl;
+            }
+        }
+
+        // Iframe Oynatıcı
+        function playIframe(url) {
+            const container = document.getElementById('videoContainer');
+            const iframe = document.createElement('iframe');
+            iframe.src = url;
+            iframe.setAttribute('allowfullscreen', 'true');
+            iframe.setAttribute('scrolling', 'no');
+            container.appendChild(iframe);
+        }
+
+        function showVideoError(msg) {
+            const container = document.getElementById('videoContainer');
+            container.innerHTML = `<div class="error-message">${msg}</div>`;
+        }
+
+        function showError(msg) {
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('matchList').innerHTML = `<div class="error-message">${msg}</div>`;
+            document.getElementById('status-text').textContent = 'Hata';
+        }
+
+        function closeModal() {
+            document.getElementById('videoModal').classList.remove('active');
+            const container = document.getElementById('videoContainer');
+            
+            if (currentHls) {
+                currentHls.destroy();
+                currentHls = null;
+            }
+            
+            container.querySelectorAll('video, iframe').forEach(el => {
+                if (el.tagName === 'VIDEO') {
+                    el.pause();
+                    el.removeAttribute('src');
+                    el.load();
+                }
+                el.remove();
             });
         }
 
-        function mesajGonder() {
-            const input = document.getElementById('chatInput');
-            const txt = input.value.trim();
-            if (!txt || !aktifOdaKodu) return;
-
-            db.ref('odalar/' + aktifOdaKodu + '/mesajlar').push({
-                gonderen: kullaniciAdi,
-                metin: txt,
-                tarih: Date.now()
-            });
-            input.value = '';
-        }
-
-        document.addEventListener('DOMContentLoaded', maclariYukle);
+        // Uygulama başlarken listeyi yükle
+        window.onload = fetchMatches;
     </script>
 </body>
 </html>
