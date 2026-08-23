@@ -2,81 +2,150 @@
 <html lang="tr">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Canlı TV Player</title>
-    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>AETHER TV</title>
     <style>
-        body { font-family: Arial, sans-serif; background: #121212; color: #fff; margin: 0; padding: 20px; }
-        .container { display: flex; gap: 20px; flex-wrap: wrap; }
-        .player-box { flex: 2; min-width: 300px; }
-        .channel-list { flex: 1; max-height: 80vh; overflow-y: auto; background: #1e1e1e; padding: 10px; border-radius: 8px; }
-        video { width: 100%; border-radius: 8px; background: #000; }
-        .channel-card { display: flex; align-items: center; gap: 10px; padding: 10px; border-bottom: 1px solid #333; cursor: pointer; }
-        .channel-card:hover { background: #2a2a2a; }
-        .channel-card img { width: 45px; height: 45px; object-fit: contain; }
-        .epg-text { font-size: 12px; color: #aaa; }
+        :root {
+            --bg-color: #08080a;
+            --card-bg: #121218;
+            --card-border: #222230;
+            --primary-red: #d32f2f;
+            --glow-red: #ff1744;
+            --text-main: #ffffff;
+            --text-muted: #a0a0b0;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            padding: 15px;
+        }
+
+        .header {
+            text-align: center;
+            font-size: 20px;
+            font-weight: 900;
+            letter-spacing: 1.5px;
+            color: var(--glow-red);
+            margin-bottom: 15px;
+            text-shadow: 0 0 10px rgba(255, 23, 68, 0.4);
+        }
+
+        #player-wrapper {
+            display: none;
+            width: 100%;
+            height: 230px;
+            background: #000;
+            border-radius: 10px;
+            overflow: hidden;
+            margin-bottom: 15px;
+            border: 1px solid var(--primary-red);
+            box-shadow: 0 0 15px rgba(211, 47, 47, 0.3);
+        }
+
+        iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+        }
+
+        .card {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 10px;
+            padding: 12px;
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        .card-title {
+            font-size: 13px;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+
+        .btn-play {
+            background: linear-gradient(135deg, var(--primary-red), #8b0000);
+            color: #fff;
+            border: none;
+            padding: 8px 0;
+            border-radius: 6px;
+            font-weight: bold;
+            font-size: 11px;
+            cursor: pointer;
+        }
+
+        .btn-play:active {
+            transform: scale(0.96);
+        }
     </style>
 </head>
 <body>
 
-<div class="container">
-    <div class="player-box">
-        <video id="video" controls autoplay></video>
-        <h2 id="current-channel">Kanal Seçin</h2>
-        <p id="current-epg" class="epg-text"></p>
+    <div class="header">AETHER TV</div>
+
+    <div id="player-wrapper">
+        <iframe id="mainIframe" src="" allow="autoplay; fullscreen" allowfullscreen></iframe>
     </div>
-    <div class="channel-list" id="channels">Yükleniyor...</div>
-</div>
 
-<script>
-    const video = document.getElementById('video');
-    let hls;
+    <div class="grid" id="channelGrid"></div>
 
-    async function loadChannels() {
-        const res = await fetch('/api/channels');
-        const result = await res.json();
-        const listEl = document.getElementById('channels');
-        listEl.innerHTML = '';
+    <script>
+        // Vercel Serverless Function Proxy Adresimiz
+        const PROXY_URL = "/api/proxy?url=";
 
-        result.data.forEach(ch => {
-            const item = document.createElement('div');
-            item.className = 'channel-card';
-            item.innerHTML = `
-                <img src="${ch.logo}" alt="${ch.name}">
-                <div>
-                    <strong>${ch.name}</strong>
-                    <div class="epg-text">${ch.epg}</div>
-                </div>
-            `;
-            item.onclick = () => playChannel(ch);
-            listEl.appendChild(item);
-        });
-    }
+        const KANALLAR = [
+            { name: "NOW TV", target: "https://izle.livetvuk.com/now-tv/" },
+            { name: "TRT 1", target: "https://izle.livetvuk.com/trt-1/" },
+            { name: "ATV", target: "https://izle.livetvuk.com/atv/" },
+            { name: "Kanal D", target: "https://izle.livetvuk.com/kanal-d/" },
+            { name: "Show TV", target: "https://izle.livetvuk.com/show-tv/" },
+            { name: "TV8", target: "https://izle.livetvuk.com/tv8/" },
+            { name: "Star TV", target: "https://izle.livetvuk.com/star-tv/" },
+            { name: "TRT Spor", target: "https://izle.livetvuk.com/trt-spor/" }
+        ];
 
-    async function playChannel(channel) {
-        document.getElementById('current-channel').innerText = channel.name;
-        document.getElementById('current-epg').innerText = channel.epg;
+        function kanallariYukle() {
+            const grid = document.getElementById('channelGrid');
+            grid.innerHTML = '';
 
-        const streamRes = await fetch(`/api/get-stream?url=${encodeURIComponent(channel.streamUrl)}`);
-        const streamData = await streamRes.json();
-
-        if (streamData.m3u8) {
-            if (Hls.isSupported()) {
-                if (hls) hls.destroy();
-                hls = new Hls();
-                hls.loadSource(streamData.m3u8);
-                hls.attachMedia(video);
-                hls.on(Hls.Events.MANIFEST_PARSED, () => video.play());
-            } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-                video.src = streamData.m3u8;
-                video.play();
-            }
-        } else {
-            alert('Yayın kaynağı çekilemedi.');
+            KANALLAR.forEach(kanal => {
+                grid.innerHTML += `
+                    <div class="card">
+                        <div class="card-title">${kanal.name}</div>
+                        <button class="btn-play" onclick="yayiniAc('${kanal.target}')">İZLE</button>
+                    </div>
+                `;
+            });
         }
-    }
 
-    loadChannels();
-</script>
+        function yayiniAc(targetUrl) {
+            const wrapper = document.getElementById('player-wrapper');
+            const iframe = document.getElementById('mainIframe');
+
+            // İsteği Vercel Serverless proxy katmanı üzerinden yönlendiriyoruz
+            iframe.src = PROXY_URL + encodeURIComponent(targetUrl);
+            wrapper.style.display = 'block';
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        document.addEventListener('DOMContentLoaded', kanallariYukle);
+    </script>
 </body>
 </html>
