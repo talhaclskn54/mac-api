@@ -1,5 +1,7 @@
 const axios = require('axios');
 const cheerio = require('cheerio');
+const fs = require('fs');
+const path = require('path');
 
 module.exports = async (req, res) => {
     // ===============================
@@ -26,6 +28,24 @@ module.exports = async (req, res) => {
     // OPTIONS isteği
     if (req.method === 'OPTIONS') {
         return res.status(204).end();
+    }
+
+    // ===============================
+    // A) ANA DİZİN: HTML ARAYÜZÜ SUNMA
+    // ===============================
+    const isApiCall = req.query.proxyUrl || req.query.getStream || req.query.api === '1' || req.headers.accept?.includes('application/json');
+
+    if (!isApiCall) {
+        try {
+            const htmlPath = path.join(process.cwd(), 'index.html');
+            if (fs.existsSync(htmlPath)) {
+                const htmlContent = fs.readFileSync(htmlPath, 'utf8');
+                res.setHeader('Content-Type', 'text/html; charset=utf-8');
+                return res.status(200).send(htmlContent);
+            }
+        } catch (e) {
+            // HTML okunamazsa API akışına devam et
+        }
     }
 
     const TARGET_DOMAIN = 'https://taraftariumonline24.org';
@@ -55,7 +75,7 @@ module.exports = async (req, res) => {
     }
 
     try {
-        // A) M3U8 STREAM PROXY (CORS ve 403 Engellerini Aşan Mod)
+        // B) M3U8 STREAM PROXY (CORS ve 403 Engellerini Aşan Mod)
         if (req.query.proxyUrl) {
             const streamUrl = decodeURIComponent(req.query.proxyUrl);
             const response = await axios({
@@ -72,7 +92,7 @@ module.exports = async (req, res) => {
             return res.status(200).send(response.data);
         }
 
-        // B) TEK BİR MAÇIN M3U8/PLAYER LİNKİNİ ÇEKME
+        // C) TEK BİR MAÇIN M3U8/PLAYER LİNKİNİ ÇEKME
         if (req.query.getStream && req.query.url) {
             const pageUrl = req.query.url;
             const matchPage = await axios.get(pageUrl, { headers: HEADERS });
@@ -84,7 +104,7 @@ module.exports = async (req, res) => {
                 return res.status(200).json({
                     basarili: true,
                     streamUrl: streamUrl,
-                    proxyStreamUrl: `/api?proxyUrl=${encodeURIComponent(streamUrl)}`,
+                    proxyStreamUrl: `/?proxyUrl=${encodeURIComponent(streamUrl)}`,
                     type: 'm3u8'
                 });
             }
@@ -117,7 +137,7 @@ module.exports = async (req, res) => {
                         return res.status(200).json({
                             basarili: true,
                             streamUrl: innerStreamUrl,
-                            proxyStreamUrl: `/api?proxyUrl=${encodeURIComponent(innerStreamUrl)}`,
+                            proxyStreamUrl: `/?proxyUrl=${encodeURIComponent(innerStreamUrl)}`,
                             type: 'm3u8'
                         });
                     }
@@ -135,7 +155,7 @@ module.exports = async (req, res) => {
             return res.status(200).json({ basarili: false, message: 'Yayın adresi bulunamadı.' });
         }
 
-        // C) ANA MAÇ LİSTESİNİ ÇEKME (Takım İsimleri ve Saat Ayrıştırma)
+        // D) ANA MAÇ LİSTESİNİ ÇEKME (Takım İsimleri ve Saat Ayrıştırma)
         const { data } = await axios.get(TARGET_DOMAIN, { headers: HEADERS });
         const $ = cheerio.load(data);
         const maclar = [];
