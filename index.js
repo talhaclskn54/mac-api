@@ -15,7 +15,7 @@ module.exports = async (req, res) => {
         return;
     }
 
-    const TARGET_DOMAIN = 'https://taraftarium24bjk14.com';
+    const TARGET_DOMAIN = 'https://taraftarium24-244.top';
     const HEADERS = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
         'Referer': `${TARGET_DOMAIN}/`,
@@ -23,6 +23,7 @@ module.exports = async (req, res) => {
     };
 
     try {
+        // Maç detay veya yayın linkini (m3u8 veya iframe) çözme isteği
         if (req.query.getStream && req.query.url) {
             let pageUrl = req.query.url;
             if (!pageUrl.startsWith('http')) {
@@ -57,33 +58,32 @@ module.exports = async (req, res) => {
             }
         }
 
+        // Ana sayfadan temiz maç ve kanal listesini çekme
         const { data } = await axios.get(TARGET_DOMAIN, { headers: HEADERS, timeout: 8000 });
         const $ = cheerio.load(data);
         const maclar = [];
 
-        // Reklamları, site adlarını ve gereksiz menüleri elemek için yasaklı kelime filtresi
         const yasakliKelimeler = [
             'gizlilik', 'iletisim', 'anasayfa', 'reklam', 'bonus', 'casino', 
             'bahis', 'giris', 'twitter', 'telegram', 'app', 'indir', 'hakkimizda',
-            'iletiket', 'kategori', 'cookie', 'copyright', 'taraftarium'
+            'iletiket', 'kategori', 'cookie', 'copyright', 'taraftarium', 'canli mac izle'
         ];
 
         $('a').each((i, element) => {
             const href = $(element).attr('href');
             const title = $(element).text().trim().replace(/\s+/g, ' ');
 
-            if (href && title.length > 5) {
+            if (href && title.length > 3) {
                 const lowerTitle = title.toLowerCase();
                 
-                // Yasaklı kelimeleri içerenleri direkt atla
                 const yasakliMi = yasakliKelimeler.some(kelime => lowerTitle.includes(kelime));
                 if (yasakliMi) return;
 
-                // İçinde takım vs belirten tire (-) veya vs ibaresi olan ya da saat içeren metinleri seç
                 const hasTime = /\d{2}:\d{2}/.test(title);
                 const hasVs = lowerTitle.includes(' - ') || lowerTitle.includes(' v ') || lowerTitle.includes('vs');
+                const isChannel = lowerTitle.includes('bein') || lowerTitle.includes('spor') || lowerTitle.includes('tivibu') || lowerTitle.includes('s sport');
 
-                if (hasTime || hasVs || lowerTitle.includes('spor') || lowerTitle.includes('bein')) {
+                if (hasTime || hasVs || isChannel) {
                     const timeMatch = title.match(/\d{2}:\d{2}/);
                     const time = timeMatch ? timeMatch[0] : 'CANLI';
 
