@@ -2,7 +2,7 @@ const axios = require('axios');
 const cheerio = require('cheerio');
 
 module.exports = async (req, res) => {
-    // CORS Başlıkları (Mobil uygulamadan ve dışarıdan erişim izni)
+    // CORS Başlıkları
     res.setHeader('Access-Control-Allow-Credentials', true);
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS');
@@ -18,97 +18,84 @@ module.exports = async (req, res) => {
 
     const TARGET_DOMAIN = 'https://taraftariumonline24.org';
     const HEADERS = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
         'Referer': `${TARGET_DOMAIN}/`,
         'Origin': TARGET_DOMAIN,
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
         'Accept-Language': 'tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7'
     };
 
-    // YAYIN LİNKİ AYIKLAMA FONKSİYONU (Yedekli Pattern Matching)
-    function extractStreamUrl(htmlContent) {
-        const streamPatterns = [
-            /(https?:\/\/[^\s"'<>]+\.m3u8[^\s"'<>]*)/i,                  // Standart M3U8 linki
-            /file:\s*["'](https?:\/\/[^\s"'<>]+\.m3u8[^"']*)["']/i,       // Player içindeki file: "..." kalıbı
-            /source\s*:\s*["'](https?:\/\/[^\s"'<>]+\.m3u8[^"']*)["']/i,     // Player içindeki source: "..." kalıbı
-            /(https?:\/\/[^\s"'<>]+\.mp4[^\s"'<>]*)/i                    // MP4 yedek format
-        ];
-
-        for (let pattern of streamPatterns) {
-            let match = htmlContent.match(pattern);
-            if (match) {
-                return match[1] || match[0];
-            }
-        }
-        return null;
-    }
-
     try {
-        // 1. OYNATICI VEYA M3U8 LINKI AYIKLAMA
+        // 1. YAYIN LİNKİNİ ÇÖZME İSTEĞİ
         if (req.query.getStream && req.query.url) {
-            const pageUrl = req.query.url;
-            
-            const matchPage = await axios.get(pageUrl, { headers: HEADERS });
+            let pageUrl = req.query.url;
+            if (!pageUrl.startsWith('http')) {
+                pageUrl = `${TARGET_DOMAIN}${pageUrl.startsWith('/') ? '' : '/'}${pageUrl}`;
+            }
+
+            // Maç detay sayfasını çek
+            const matchPage = await axios.get(pageUrl, { headers: HEADERS, timeout: 8000 });
             const html = matchPage.data;
+            const $ = cheerio.load(html);
 
-            let streamUrl = extractStreamUrl(html);
-            if (streamUrl) {
-                return res.status(200).json({ basarili: true, streamUrl: streamUrl, type: 'm3u8' });
-            }
+            let streamUrl = null;
 
-            const $page = cheerio.load(html);
-            let iframeSrc = $page('iframe').attr('src');
-
-            if (!iframeSrc) {
-                const iframeMatch = html.match(/<iframe[^>]+src=["']([^"']+)["']/i);
-                if (iframeMatch) iframeSrc = iframeMatch[1];
-            }
-
-            if (iframeSrc) {
-                if (iframeSrc.startsWith('//')) iframeSrc = 'https:' + iframeSrc;
-                else if (iframeSrc.startsWith('/')) iframeSrc = TARGET_DOMAIN + iframeSrc;
-
-                try {
-                    const iframePage = await axios.get(iframeSrc, {
-                        headers: {
-                            ...HEADERS,
-                            'Referer': pageUrl
-                        }
-                    });
-                    const iframeHtml = iframePage.data;
-                    let innerStreamUrl = extractStreamUrl(iframeHtml);
-                    
-                    if (innerStreamUrl) {
-                        return res.status(200).json({ basarili: true, streamUrl: innerStreamUrl, type: 'm3u8' });
-                    }
-                } catch (e) {
-                    // Iframe hatası durumunda iframe adresini döndür
+            // M3U8 veya MP4 kalıplarını ara
+            const m3u8Match = html.match(/(https?:\/\/[^\s"'<>]+\.m3u8[^\s"'<>]*)/i);
+            if (m3u8Match) {
+                streamUrl = m3u8Match[1];
+            } else {
+                // Iframe bulmaya çalış
+                let iframeSrc = $('iframe').attr('src');
+                if (!iframeSrc) {
+                    const iframeMatch = html.match(/<iframe[^>]+src=["']([^"']+)["']/i);
+                    if (iframeMatch) iframeSrc = iframeMatch[1];
                 }
 
-                return res.status(200).json({ basarili: true, streamUrl: iframeSrc, type: 'iframe' });
+                if (iframeSrc) {
+                    if (iframeSrc.startsWith('//')) iframeSrc = 'https:' + iframeSrc;
+                    else if (iframeSrc.startsWith('/')) iframeSrc = TARGET_DOMAIN + iframeSrc;
+
+                    try {
+                        const iframePage = await axios.get(iframeSrc, {
+                            headers: { ...HEADERS, 'Referer': pageUrl },
+                            timeout: 6000
+                        });
+                        const innerM3u8 = iframePage.data.match(/(https?:\/\/[^\s"'<>]+\.m3u8[^\s"'<>]*)/i);
+                        if (innerM3u8) {
+                            streamUrl = innerM3u8[1];
+                        } else {
+                            streamUrl = iframeSrc; // Doğrudan iframe linkini yedek olarak ver
+                        }
+                    } catch (err) {
+                        streamUrl = iframeSrc;
+                    }
+                }
             }
 
-            return res.status(200).json({ basarili: false, message: 'Yayın adresi veya player bulunamadı.' });
+            if (streamUrl) {
+                return res.status(200).json({ basarili: true, streamUrl: streamUrl });
+            } else {
+                return res.status(200).json({ basarili: false, message: 'Yayın kaynağı bulunamadı.' });
+            }
         }
 
         // 2. ANA MAÇ LİSTESİNİ ÇEKME
-        const { data } = await axios.get(TARGET_DOMAIN, { headers: HEADERS });
+        const { data } = await axios.get(TARGET_DOMAIN, { headers: HEADERS, timeout: 8000 });
         const $ = cheerio.load(data);
         const maclar = [];
 
-        // Sitedeki maç linki yapısına göre seçici güncellendi (genel link veya mac-izle yapıları taranır)
         $('a').each((i, element) => {
             const href = $(element).attr('href');
             const title = $(element).text().trim();
 
-            if (href && (href.includes('mac-izle') || href.includes('match') || element.attribs.class?.includes('match'))) {
+            if (href && (href.includes('mac-izle') || href.includes('match') || href.includes('kanallar') || element.attribs.class?.includes('match'))) {
                 const timeMatch = title.match(/\d{2}:\d{2}/);
                 const time = timeMatch ? timeMatch[0] : 'CANLI';
 
-                if (title.length > 3) {
+                if (title.length > 2) {
                     const fullUrl = href.startsWith('http') ? href : `${TARGET_DOMAIN}${href.startsWith('/') ? '' : '/'}${href}`;
                     
-                    // Aynı maçın mükerrer eklenmesini engelle
                     if (!maclar.some(m => m.pageUrl === fullUrl)) {
                         maclar.push({
                             title: title.replace(/\s+/g, ' '),
@@ -120,14 +107,14 @@ module.exports = async (req, res) => {
             }
         });
 
-        res.status(200).json({
+        return res.status(200).json({
             basarili: true,
             toplam: maclar.length,
             maclar: maclar
         });
 
     } catch (error) {
-        res.status(500).json({
+        return res.status(500).json({
             basarili: false,
             hata: error.message
         });
