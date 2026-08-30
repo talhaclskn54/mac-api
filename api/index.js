@@ -16,7 +16,7 @@ module.exports = async (req, res) => {
         return;
     }
 
-    const TARGET_DOMAIN = 'https://taraftarium2spor.top';
+    const TARGET_DOMAIN = 'https://taraftariumonline24.org';
     const HEADERS = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         'Referer': `${TARGET_DOMAIN}/`,
@@ -37,7 +37,6 @@ module.exports = async (req, res) => {
         for (let pattern of streamPatterns) {
             let match = htmlContent.match(pattern);
             if (match) {
-                // Öncelik yakalanan grupta (match[1]), yoksa eşleşmenin tamamında (match[0])
                 return match[1] || match[0];
             }
         }
@@ -45,21 +44,18 @@ module.exports = async (req, res) => {
     }
 
     try {
-        // 1. OYNATICI VEYA M3U8 LINKI AYIKLAMA (İzle butonuna basıldığında çalışır)
+        // 1. OYNATICI VEYA M3U8 LINKI AYIKLAMA
         if (req.query.getStream && req.query.url) {
             const pageUrl = req.query.url;
             
-            // Maçın detay sayfasını çekiyoruz
             const matchPage = await axios.get(pageUrl, { headers: HEADERS });
             const html = matchPage.data;
 
-            // A) Ana Sayfada Yedekli Kalıplarla Yayın Arama
             let streamUrl = extractStreamUrl(html);
             if (streamUrl) {
                 return res.status(200).json({ basarili: true, streamUrl: streamUrl, type: 'm3u8' });
             }
 
-            // B) Ana sayfada bulunamazsa Player Iframe adresini tespit et
             const $page = cheerio.load(html);
             let iframeSrc = $page('iframe').attr('src');
 
@@ -72,7 +68,6 @@ module.exports = async (req, res) => {
                 if (iframeSrc.startsWith('//')) iframeSrc = 'https:' + iframeSrc;
                 else if (iframeSrc.startsWith('/')) iframeSrc = TARGET_DOMAIN + iframeSrc;
 
-                // DERİN TARAMA: Iframe'in içine girip yayın adresini orada ara
                 try {
                     const iframePage = await axios.get(iframeSrc, {
                         headers: {
@@ -87,7 +82,7 @@ module.exports = async (req, res) => {
                         return res.status(200).json({ basarili: true, streamUrl: innerStreamUrl, type: 'm3u8' });
                     }
                 } catch (e) {
-                    // Iframe içeriğine erişilemezse güvenli yedek olarak iframe adresini ver
+                    // Iframe hatası durumunda iframe adresini döndür
                 }
 
                 return res.status(200).json({ basarili: true, streamUrl: iframeSrc, type: 'iframe' });
@@ -96,24 +91,32 @@ module.exports = async (req, res) => {
             return res.status(200).json({ basarili: false, message: 'Yayın adresi veya player bulunamadı.' });
         }
 
-        // 2. ANA MAÇ LİSTESİNİ ÇEKME (Bozulmayan Orijinal Yapı)
+        // 2. ANA MAÇ LİSTESİNİ ÇEKME
         const { data } = await axios.get(TARGET_DOMAIN, { headers: HEADERS });
         const $ = cheerio.load(data);
         const maclar = [];
 
-        $('a[href*="/mac-izle/"]').each((i, element) => {
+        // Sitedeki maç linki yapısına göre seçici güncellendi (genel link veya mac-izle yapıları taranır)
+        $('a').each((i, element) => {
+            const href = $(element).attr('href');
             const title = $(element).text().trim();
-const pageUrl = $(element).attr('href');
-            
-            const timeMatch = title.match(/\d{2}:\d{2}/);
-            const time = timeMatch ? timeMatch[0] : 'CANLI';
 
-            if (title && pageUrl) {
-                maclar.push({
-                    title: title.replace(/\s+/g, ' '),
-                    time: time,
-                    pageUrl: pageUrl.startsWith('http') ? pageUrl : `${TARGET_DOMAIN}${pageUrl}`
-                });
+            if (href && (href.includes('mac-izle') || href.includes('match') || element.attribs.class?.includes('match'))) {
+                const timeMatch = title.match(/\d{2}:\d{2}/);
+                const time = timeMatch ? timeMatch[0] : 'CANLI';
+
+                if (title.length > 3) {
+                    const fullUrl = href.startsWith('http') ? href : `${TARGET_DOMAIN}${href.startsWith('/') ? '' : '/'}${href}`;
+                    
+                    // Aynı maçın mükerrer eklenmesini engelle
+                    if (!maclar.some(m => m.pageUrl === fullUrl)) {
+                        maclar.push({
+                            title: title.replace(/\s+/g, ' '),
+                            time: time,
+                            pageUrl: fullUrl
+                        });
+                    }
+                }
             }
         });
 
@@ -130,4 +133,3 @@ const pageUrl = $(element).attr('href');
         });
     }
 };
-
